@@ -15,7 +15,7 @@ import urllib.request
 import zipfile
 
 BASE = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets"
-DATASETS = {"scifact": "test", "nfcorpus": "test"}
+DATASETS = {"scifact": "test", "nfcorpus": "test", "quora": "test"}
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 

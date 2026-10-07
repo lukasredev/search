@@ -4,22 +4,32 @@ JAVA_HOME  ?= $(HOME)/.local/opt/jdk21
 MVN        := $(HOME)/.local/opt/maven/bin/mvn
 JAVA       := $(JAVA_HOME)/bin/java
 JAVA_FLAGS := --add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED
+# 522k Quora vectors are ~800 MB of float[] before they reach Lucene.
+INDEX_HEAP ?= -Xmx6g
 JAR        := searchd/target/searchd.jar
 DATASET    ?= scifact
 export JAVA_HOME
 
-.PHONY: help data build index serve nlp bench clean reindex
+.PHONY: help data build index serve nlp bench clean reindex demos \
+        docker-build docker-setup docker-up docker-down docker-logs \
+        docker-bench docker-demos
 
 help:
-	@echo "make data            fetch + normalize scifact and nfcorpus"
+	@echo "make data            fetch + normalize scifact, nfcorpus and quora"
 	@echo "make build           compile the Java service"
 	@echo "make index           build the Lucene index (needs nlp running)"
 	@echo "make nlp             run the embedding/rerank sidecar on :8081"
 	@echo "make serve           run the search API + UI on :8080"
 	@echo "make bench           run the full query set, write benchmark.json"
 	@echo "make reindex         rebuild the index reusing cached embeddings"
+	@echo "make demos           regenerate curated example queries (TOPIC=--topic cs)"
 	@echo
-	@echo "DATASET=$(DATASET)   (scifact | nfcorpus)"
+	@echo "Docker:"
+	@echo "  make docker-build    build both images"
+	@echo "  make docker-setup    fetch the dataset and build the index in a volume"
+	@echo "  make docker-up       start, make docker-down to stop"
+	@echo
+	@echo "DATASET=$(DATASET)   (scifact | nfcorpus | quora)"
 
 data:
 	python3 scripts/fetch_dataset.py
@@ -33,7 +43,7 @@ nlp:
 	cd nlp && TORCH_THREADS=4 ./run.sh
 
 index: $(JAR)
-	cd searchd && $(JAVA) $(JAVA_FLAGS) -cp target/searchd.jar \
+	cd searchd && $(JAVA) $(JAVA_FLAGS) $(INDEX_HEAP) -cp target/searchd.jar \
 	  ai.deepjudge.searchdemo.Indexer $(DATASET)
 
 # Same as index; the embedding cache in data/$(DATASET)/vectors.f32 makes it fast.
@@ -50,6 +60,33 @@ bench: $(JAR)
 bench-fast: $(JAR)
 	cd searchd && $(JAVA) $(JAVA_FLAGS) -cp target/searchd.jar \
 	  ai.deepjudge.searchdemo.Benchmark $(DATASET) 99999 norerank
+
+demos: ## regenerate the curated example queries (needs serve running)
+	python3 scripts/find_demo_queries.py --dataset $(DATASET) $(TOPIC)
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+docker-build:
+	docker compose build
+
+docker-setup:
+	docker compose --profile setup run --rm fetch $(DATASET)
+	DATASET=$(DATASET) docker compose --profile setup run --rm indexer $(DATASET)
+
+docker-bench:
+	DATASET=$(DATASET) docker compose --profile setup run --rm bench $(DATASET)
+
+docker-demos:
+	docker compose --profile setup run --rm demos --dataset $(DATASET) $(TOPIC)
+
+docker-up:
+	DATASET=$(DATASET) docker compose up -d
+	@echo "http://localhost:$${PORT:-8080}"
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f --tail=80
 
 clean:
 	$(MVN) -q -B -f searchd/pom.xml clean

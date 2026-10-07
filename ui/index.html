@@ -3,420 +3,773 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lucene Pipeline Demo</title>
+<title>How a search engine works</title>
 <style>
-  :root {
-    --bg:#0f1115; --panel:#171a21; --line:#272b35; --ink:#e6e8ee; --dim:#8b93a7;
-    --accent:#6aa9ff; --gold:#e8b84b; --up:#4ec9a0; --down:#e06c75;
-    --bm25:#6aa9ff; --dense:#b98cff; --rrf:#4ec9a0; --rerank:#e8b84b;
-  }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink);
-         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; }
-  code,.mono { font-family:ui-monospace,"SF Mono",Menlo,monospace; }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex;
-           gap:16px; align-items:center; flex-wrap:wrap; }
-  h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.01em; }
-  .meta { color:var(--dim); font-size:13px; }
-  main { padding:20px; max-width:1800px; margin:0 auto; }
+@font-face { font-family:Plex; src:url(fonts/plex-sans-400.woff2) format('woff2');
+             font-weight:400; font-display:swap; }
+@font-face { font-family:Plex; src:url(fonts/plex-sans-600.woff2) format('woff2');
+             font-weight:600; font-display:swap; }
+@font-face { font-family:PlexMono; src:url(fonts/plex-mono-400.woff2) format('woff2');
+             font-weight:400; font-display:swap; }
+@font-face { font-family:PlexMono; src:url(fonts/plex-mono-500.woff2) format('woff2');
+             font-weight:500; font-display:swap; }
 
-  .searchbar { display:flex; gap:10px; margin-bottom:14px; }
-  input[type=text] { flex:1; padding:12px 14px; font-size:17px; background:var(--panel);
-                     border:1px solid var(--line); border-radius:8px; color:var(--ink); }
-  input[type=text]:focus { outline:2px solid var(--accent); outline-offset:-1px; }
-  button { padding:12px 20px; font-size:15px; font-weight:600; background:var(--accent);
-           color:#0b0e14; border:0; border-radius:8px; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line);
-                 font-weight:400; padding:6px 10px; font-size:13px; }
+:root {
+  --ink:#0E1420; --slab:#151C2A; --slab2:#1C2537; --rule:#273349;
+  --paper:#E9EDF6; --mute:#909CB4;
+  --lex:#5B9CFF; --sem:#C07BFF; --fuse:#3FD3A3; --rank:#FFB454;
+  --sans:Plex,ui-sans-serif,system-ui,sans-serif;
+  --mono:PlexMono,ui-monospace,Menlo,monospace;
+  --pad:22px;
+}
+* { box-sizing:border-box; }
+html,body { background:var(--ink); color:var(--paper); margin:0; }
+body { font:400 16px/1.55 var(--sans); -webkit-font-smoothing:antialiased; }
+.mono { font-family:var(--mono); font-feature-settings:"tnum" 1; }
+h1,h2,h3 { margin:0; font-weight:600; letter-spacing:-0.01em; }
+button,input,textarea,select { font:inherit; color:inherit; }
+:focus-visible { outline:2px solid var(--lex); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce) { * { transition:none!important; animation:none!important; } }
 
-  .knobs { display:flex; gap:18px; flex-wrap:wrap; align-items:center; padding:12px 14px;
-           background:var(--panel); border:1px solid var(--line); border-radius:8px;
-           margin-bottom:18px; font-size:13px; }
-  .knob { display:flex; gap:6px; align-items:center; color:var(--dim); }
-  .knob input, .knob select { width:72px; padding:4px 6px; background:#0f1115;
-           border:1px solid var(--line); border-radius:5px; color:var(--ink); font-size:13px; }
-  .knob select { width:auto; }
-  .knob b { color:var(--ink); font-weight:600; }
+/* ── pipeline rail: the table of contents and the architecture diagram at once ── */
+.rail { display:flex; align-items:stretch; gap:0; border-bottom:1px solid var(--rule);
+        background:var(--slab); position:sticky; top:0; z-index:20; }
+.ch { flex:1; display:flex; flex-direction:column; gap:3px; padding:11px 16px 12px;
+      background:none; border:0; border-bottom:3px solid transparent; cursor:pointer;
+      text-align:left; transition:background .12s; min-width:0; }
+.ch:hover { background:var(--slab2); }
+.ch .num { font-family:var(--mono); font-size:11.5px; color:var(--mute); }
+.ch .nm  { font-size:14.5px; font-weight:600; color:var(--mute); white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; }
+.ch[data-state=done] .nm { color:var(--paper); }
+.ch[data-state=done] .num,.ch[data-state=now] .num { color:var(--c); }
+.ch[data-state=done] { border-bottom-color:color-mix(in srgb,var(--c) 45%,transparent); }
+.ch[data-state=now] { background:var(--slab2); border-bottom-color:var(--c); }
+.ch[data-state=now] .nm { color:var(--c); }
+.railend { display:flex; align-items:center; gap:14px; padding:0 18px; border-left:1px solid var(--rule);
+           font-size:12.5px; color:var(--mute); white-space:nowrap; }
 
-  section { background:var(--panel); border:1px solid var(--line); border-radius:10px;
-            padding:16px; margin-bottom:18px; }
-  section > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em;
-                 color:var(--dim); margin:0 0 12px; font-weight:600; }
+main { padding:26px var(--pad) 90px; max-width:1860px; margin:0 auto; }
 
-  /* timing waterfall */
-  .bar { display:grid; grid-template-columns:90px 1fr 90px; gap:10px; align-items:center;
-         margin-bottom:6px; font-size:13px; }
-  .bar .track { background:#0f1115; border-radius:4px; height:20px; overflow:hidden; }
-  .bar .fill { display:block; height:100%; border-radius:4px; min-width:2px; }
-  .bar .num { text-align:right; color:var(--dim); }
+/* ── chapter heading ── */
+.lede { margin-bottom:22px; max-width:68ch; }
+.lede h1 { font-size:31px; line-height:1.18; margin-bottom:7px; }
+.lede p { margin:0; color:var(--mute); font-size:17px; line-height:1.5; }
 
-  /* analyzer chain */
-  .chain { display:flex; flex-direction:column; gap:5px; }
-  .chainrow { display:grid; grid-template-columns:190px 1fr; gap:12px; align-items:baseline;
-              font-size:13px; }
-  .chainrow .f { color:var(--dim); }
-  .tok { display:inline-block; padding:1px 7px; margin:2px 3px 2px 0; border-radius:4px;
-         background:#20242e; border:1px solid var(--line); font-size:12.5px; }
-  .tok.gone { opacity:.3; text-decoration:line-through; }
+/* ── panels ── */
+.panel { background:var(--slab); border:1px solid var(--rule); border-radius:4px;
+         padding:var(--pad); margin-bottom:16px; }
+.panel > h2 { font-size:17px; margin-bottom:4px; }
+.panel > .sub { color:var(--mute); font-size:14px; margin:0 0 16px; max-width:76ch; }
+.panel.flush { padding:0; overflow:hidden; }
 
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th,td { text-align:right; padding:6px 10px; border-bottom:1px solid var(--line); }
-  th:first-child, td:first-child { text-align:left; }
-  th { color:var(--dim); font-weight:600; font-size:11.5px; text-transform:uppercase;
-       letter-spacing:.06em; }
-  td.best { color:var(--up); font-weight:600; }
+.grid2 { display:grid; grid-template-columns:minmax(0,420px) minmax(0,1fr); gap:16px;
+         align-items:start; }
+@media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
 
-  /* stage columns */
-  .board { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
-  .col { min-width:0; }
-  .colhead { display:flex; justify-content:space-between; align-items:baseline;
-             padding:0 2px 8px; border-bottom:2px solid var(--c); margin-bottom:8px; }
-  .colhead .n { font-size:13px; font-weight:600; color:var(--c); }
-  .colhead .t { font-size:12px; color:var(--dim); }
-  .doc { background:#131620; border:1px solid var(--line); border-left:3px solid transparent;
-         border-radius:6px; padding:7px 9px; margin-bottom:6px; cursor:pointer; }
-  .doc:hover { border-color:var(--accent); }
-  .doc.rel { border-left-color:var(--gold); }
-  .doc .top { display:flex; justify-content:space-between; gap:8px; font-size:11.5px;
-              color:var(--dim); margin-bottom:3px; }
-  .doc .ttl { font-size:12.5px; line-height:1.35; overflow:hidden;
-              display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
-  .doc .sc { color:var(--ink); }
-  .delta { font-weight:600; }
-  .delta.up { color:var(--up); } .delta.down { color:var(--down); }
-  .badge { font-size:10px; padding:0 4px; border-radius:3px; border:1px solid var(--line);
-           color:var(--dim); margin-left:4px; }
+/* ── controls ── */
+.ask { display:flex; gap:10px; margin-bottom:12px; }
+.ask input { flex:1; padding:14px 16px; font-size:19px; background:var(--slab);
+             border:1px solid var(--rule); border-radius:4px; }
+.ask input::placeholder { color:var(--mute); }
+.btn { padding:0 22px; font-size:16px; font-weight:600; background:var(--lex); color:#06101F;
+       border:0; border-radius:4px; cursor:pointer; }
+.btn:disabled { opacity:.45; cursor:default; }
+.btn.quiet { background:transparent; color:var(--mute); border:1px solid var(--rule);
+             font-weight:400; font-size:14px; padding:7px 13px; }
+.btn.quiet:hover { color:var(--paper); border-color:var(--mute); }
 
-  details { margin-top:10px; }
-  summary { cursor:pointer; color:var(--dim); font-size:13px; }
-  pre { background:#0b0e14; border:1px solid var(--line); border-radius:6px; padding:12px;
-        overflow:auto; font-size:12px; max-height:420px; }
-  .warn { background:#2b1f12; border:1px solid #5a3f1d; color:#e8b84b; padding:10px 12px;
-          border-radius:8px; font-size:13px; margin-bottom:14px; }
-  .err { background:#2b1416; border-color:#5a2227; color:#e06c75; }
-  .hint { color:var(--dim); font-size:12.5px; margin-top:8px; }
-  .picker { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:13px;
-            color:var(--dim); margin-bottom:14px; }
-  .demos { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
-  .demorow { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
-  .demorow .cat { flex:0 0 118px; font-size:11px; text-transform:uppercase;
-                  letter-spacing:.06em; color:var(--dim); padding-top:7px; font-weight:600; }
-  .chip { background:#131620; border:1px solid var(--line); border-radius:999px;
-          padding:5px 12px; font-size:12.5px; cursor:pointer; color:var(--ink);
-          max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .chip:hover { border-color:var(--c, var(--accent)); color:var(--c, var(--accent)); }
-  .picker select { flex:1; min-width:280px; padding:7px 9px; background:var(--panel);
-            border:1px solid var(--line); border-radius:6px; color:var(--ink); font-size:13px; }
+.knobs { display:flex; gap:7px 20px; flex-wrap:wrap; align-items:center;
+         padding:11px 15px; background:var(--slab); border:1px solid var(--rule);
+         border-radius:4px; margin-bottom:16px; font-size:14px; }
+.knob { display:flex; gap:7px; align-items:center; color:var(--mute); }
+.knob b { color:var(--paper); font-weight:600; }
+.knob input,.knob select { width:72px; padding:4px 7px; background:var(--ink);
+       border:1px solid var(--rule); border-radius:3px; font-size:14px; font-family:var(--mono); }
+.knob select { width:auto; font-family:var(--sans); }
+.knob[data-stage] b { color:var(--c); }
+
+/* ── examples ── */
+.exrow { display:flex; gap:8px; align-items:flex-start; margin-bottom:7px; }
+.exrow .cat { flex:0 0 112px; font-size:13px; color:var(--mute); padding-top:6px; }
+.chip { background:var(--slab); border:1px solid var(--rule); border-radius:3px;
+        padding:5px 12px; font-size:14px; cursor:pointer; max-width:430px;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chip:hover { border-color:var(--c,var(--lex)); color:var(--c,var(--lex)); }
+
+/* ── latency ── */
+.bar { display:grid; grid-template-columns:104px 1fr 92px; gap:12px; align-items:center;
+       margin-bottom:7px; font-size:14px; }
+.bar .track { background:var(--ink); border-radius:2px; height:22px; overflow:hidden; }
+.bar .fill { display:block; height:100%; border-radius:2px; min-width:2px; }
+.bar .num { text-align:right; color:var(--mute); }
+
+/* ── analyzer chain ── */
+.chainrow { display:grid; grid-template-columns:184px 1fr; gap:14px; align-items:baseline;
+            padding:4px 0; border-top:1px solid var(--rule); }
+.chainrow:first-child { border-top:0; }
+.chainrow .f { color:var(--mute); font-size:13.5px; }
+.tok { display:inline-block; padding:2px 9px; margin:2px 4px 2px 0; border-radius:3px;
+       background:var(--slab2); font-family:var(--mono); font-size:13.5px; }
+.tok.gone { opacity:.32; text-decoration:line-through; }
+.tok.new { background:color-mix(in srgb,var(--fuse) 22%,var(--slab2)); }
+
+/* ── tables ── */
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th,td { text-align:right; padding:7px 11px; border-bottom:1px solid var(--rule); }
+th:first-child,td:first-child { text-align:left; }
+th { color:var(--mute); font-weight:400; font-size:13px; }
+tbody tr:hover { background:var(--slab2); }
+td.best { color:var(--fuse); font-weight:600; }
+.scroll { overflow-x:auto; }
+
+/* ── stage columns ── */
+.board { display:grid; gap:14px; align-items:start; }
+.col { min-width:0; }
+.colhead { display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+           padding:0 2px 8px; border-bottom:2px solid var(--c); margin-bottom:9px; }
+.colhead .n { font-size:15px; font-weight:600; color:var(--c); }
+.colhead .t { font-size:13px; color:var(--mute); font-family:var(--mono); }
+.doc { background:var(--ink); border:1px solid var(--rule); border-left:3px solid transparent;
+       border-radius:3px; padding:8px 11px; margin-bottom:7px; cursor:pointer; }
+.doc:hover { border-color:var(--c); }
+.doc.rel { background:var(--slab2); border-left-color:var(--paper); }
+.doc .top { display:flex; justify-content:space-between; gap:9px; font-size:12.5px;
+            color:var(--mute); margin-bottom:3px; font-family:var(--mono); }
+.doc .ttl { font-size:14px; line-height:1.38; overflow:hidden; display:-webkit-box;
+            -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+.doc.rel .ttl::after { content:" ✓"; color:var(--paper); font-weight:600; }
+.sc { color:var(--paper); }
+.delta { font-weight:600; }
+.delta.up { color:var(--fuse); } .delta.down { color:var(--rank); }
+.tag { font-size:11px; padding:1px 5px; border-radius:2px; border:1px solid var(--rule);
+       color:var(--mute); margin-left:5px; font-family:var(--sans); }
+
+/* ── vector strip ── */
+.vec { display:flex; align-items:center; gap:1px; height:76px; background:var(--ink);
+       border:1px solid var(--rule); border-radius:3px; padding:6px 8px; overflow:hidden; }
+.vec i { flex:1 1 0; min-width:0; display:block; border-radius:1px; }
+
+.note { color:var(--mute); font-size:13.5px; margin-top:11px; max-width:80ch; }
+.banner { background:var(--slab2); border:1px solid var(--rule); border-left:3px solid var(--rank);
+          padding:11px 15px; border-radius:3px; font-size:14.5px; margin-bottom:16px; }
+.banner.bad { border-left-color:#FF6B6B; }
+pre { background:var(--ink); border:1px solid var(--rule); border-radius:3px; padding:13px;
+      overflow:auto; font-size:13px; font-family:var(--mono); max-height:440px; margin:0; }
+details > summary { cursor:pointer; color:var(--mute); font-size:14px; padding:4px 0; }
+textarea { width:100%; min-height:168px; padding:13px; background:var(--ink);
+           border:1px solid var(--rule); border-radius:3px; font-family:var(--mono);
+           font-size:14px; line-height:1.5; resize:vertical; }
+.kv { display:flex; flex-wrap:wrap; gap:4px 30px; font-size:14px; }
+.kv div { display:flex; gap:8px; }
+.kv span { color:var(--mute); }
+.kv b { font-family:var(--mono); font-weight:500; }
+.keys { position:fixed; right:14px; bottom:12px; font-size:12px; color:var(--mute);
+        background:var(--slab); border:1px solid var(--rule); border-radius:3px;
+        padding:5px 11px; font-family:var(--mono); }
 </style>
 </head>
 <body>
-<header>
-  <h1>Lucene Pipeline Demo</h1>
-  <span class="meta" id="hdr">connecting…</span>
-  <span class="meta" style="margin-left:auto" id="wall"></span>
-</header>
+
+<nav class="rail" id="rail"></nav>
 
 <main>
-  <div class="searchbar">
-    <input type="text" id="q" placeholder="Ask something — or pick a benchmark query below"
-           autocomplete="off" spellcheck="false">
-    <button id="go">Search</button>
-  </div>
-
-  <div id="demos"></div>
-
-  <div class="picker">
-    <label for="bq">Benchmark query</label>
-    <select id="bq"><option value="">— loading —</option></select>
-    <button class="ghost" id="rand">Random</button>
-  </div>
-
-  <div class="knobs">
-    <span class="knob">mode
-      <select id="mode">
-        <option value="hybrid">hybrid</option>
-        <option value="bm25_only">bm25 only</option>
-        <option value="dense_only">dense only</option>
-      </select></span>
-    <span class="knob">BM25 <b>k1</b><input type="number" id="k1" value="1.2" step="0.1" min="0"></span>
-    <span class="knob"><b>b</b><input type="number" id="b" value="0.75" step="0.05" min="0" max="1"></span>
-    <span class="knob">RRF <b>k</b><input type="number" id="rrf_k" value="60" step="10" min="1"></span>
-    <span class="knob"><b>efSearch</b><input type="number" id="ef_search" value="100" step="10" min="10"></span>
-    <span class="knob">candidates <b>n</b><input type="number" id="n" value="100" step="10" min="10"></span>
-    <span class="knob">rerank <b>top</b><input type="number" id="rerank_n" value="50" step="10" min="0"></span>
-  </div>
-
+  <div class="lede"><h1 id="chTitle"></h1><p id="chThesis"></p></div>
   <div id="msg"></div>
-  <div id="out"></div>
+  <div id="stage"></div>
 </main>
+
+<div class="keys">← → chapters &nbsp; 0-5 jump &nbsp; / search</div>
 
 <script>
 const API = location.port === '5173' ? 'http://localhost:8080' : '';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const COLORS = { bm25:'var(--bm25)', dense:'var(--dense)', rrf:'var(--rrf)', rerank:'var(--rerank)' };
-const LABEL = { bm25:'1 · BM25', dense:'2 · Dense (HNSW)', rrf:'3 · RRF fusion', rerank:'4 · Cross-encoder' };
-let last = null;
+const HUE = { bm25:'var(--lex)', dense:'var(--sem)', rrf:'var(--fuse)', rerank:'var(--rank)',
+              analyze:'var(--mute)' };
+const TITLE = { bm25:'BM25', dense:'Dense', rrf:'RRF fusion', rerank:'Cross-encoder' };
 
-async function boot() {
-  let h = null;
-  try {
-    h = await (await fetch(API + '/api/health')).json();
-    const nlp = h.nlp?.ok ? 'nlp up' : 'nlp DOWN';
-    $('hdr').textContent = `${h.dataset} · ${h.docs.toLocaleString()} docs · ${nlp}`;
-    if (!h.nlp?.ok) note('NLP sidecar is unreachable — dense retrieval and reranking will be skipped.', true);
-  } catch (e) { $('hdr').textContent = 'API unreachable'; }
+/* Each chapter runs the request it describes, so its latency bar is honest:
+   chapter 1 really does only BM25 and really does take 2 ms. */
+const CHAPTERS = [
+  { id:'index', name:'Indexing', hue:'var(--mute)',
+    title:'How one document gets into the index',
+    thesis:'Before anything can be found it has to be stored twice — once as words, once as '
+         + 'numbers. Paste any text below and watch both happen.' },
+  { id:'lexical', name:'Matching words', hue:'var(--lex)',
+    title:'Looking the words up',
+    thesis:'The query goes through the same filters the documents did. Whatever survives is '
+         + 'looked up in the inverted index, and BM25 ranks what comes back.',
+    req:{ mode:'bm25_only', rerank:false }, cols:['bm25'], knobs:['k1','b','n'] },
+  { id:'semantic', name:'Matching meaning', hue:'var(--sem)',
+    title:'Words are not meanings',
+    thesis:'Ask the same thing in different words and BM25 has nothing to match. A second '
+         + 'index stores each document as a point in space, and we look for near ones.',
+    req:{ mode:'hybrid', rerank:false }, cols:['bm25','dense'], knobs:['k1','b','n','ef_search'] },
+  { id:'fusion', name:'Combining', hue:'var(--fuse)',
+    title:'Two rankings, one answer',
+    thesis:'BM25 scores and cosine similarities are not comparable numbers. Ranks are. '
+         + 'Reciprocal rank fusion adds up 1/(k+rank) and needs nothing else.',
+    req:{ mode:'hybrid', rerank:false }, cols:['bm25','dense','rrf'],
+    knobs:['k1','b','n','ef_search','rrf_k'] },
+  { id:'rerank', name:'Reading closely', hue:'var(--rank)',
+    title:'Reading costs more than matching',
+    thesis:'A cross-encoder reads the query and document together instead of comparing two '
+         + 'vectors. It is better and it is thousands of times slower, so it only ever sees '
+         + 'the few dozen candidates the earlier stages hand it.',
+    req:{ mode:'hybrid', rerank:true }, cols:['bm25','dense','rrf','rerank'],
+    knobs:['k1','b','n','ef_search','rrf_k','rerank_n'] },
+  { id:'evidence', name:'Was it worth it?', hue:'var(--paper)',
+    title:'Measuring whether each stage earned its place',
+    thesis:'Every stage is a hypothesis. These are real relevance judgments, so we can score '
+         + 'the ranking after each one and find out which stages actually helped.',
+    req:{ mode:'hybrid', rerank:true }, cols:['bm25','dense','rrf','rerank'],
+    knobs:['k1','b','n','ef_search','rrf_k','rerank_n'] },
+];
 
-  loadDemos(h?.dataset);
-
-  try {
-    const q = await (await fetch(API + '/api/queries')).json();
-    const sel = $('bq');
-    sel.innerHTML = '<option value="">— pick a judged query —</option>' +
-      q.queries.map(x => `<option value="${esc(x.text)}">${x.qid} · ${esc(x.text)} (${x.relevantDocs} relevant)</option>`).join('');
-    sel.onchange = () => { if (sel.value) { $('q').value = sel.value; search(); } };
-    $('rand').onclick = () => {
-      const pick = q.queries[Math.floor(Math.random() * q.queries.length)];
-      $('q').value = pick.text; sel.value = pick.text; search();
-    };
-  } catch (e) { /* queries are optional */ }
-}
-
-const CAT = {
-  'lexical-win':  { label: 'lexical win',  color: 'var(--bm25)' },
-  'semantic-win': { label: 'semantic win', color: 'var(--dense)' },
-  'fusion-win':   { label: 'fusion win',   color: 'var(--rrf)' },
+const state = {
+  ch: 0, health:null, last:null, demos:null, stats:null, busy:false,
+  q:'', knob:{ k1:1.2, b:0.75, n:100, ef_search:100, rrf_k:60, rerank_n:50 },
+  docText:'', preview:null,
 };
 
-/* Curated examples produced by scripts/find_demo_queries.py — each one is a query that
-   demonstrates a specific thing, verified against the live index rather than guessed. */
-async function loadDemos(dataset) {
+/* ══ chrome ══════════════════════════════════════════════════════════════ */
+function drawRail() {
+  $('rail').innerHTML = CHAPTERS.map((c,i) => {
+    const st = i === state.ch ? 'now' : i < state.ch ? 'done' : 'todo';
+    return `<button class="ch" data-i="${i}" data-state="${st}" style="--c:${c.hue}">
+      <span class="num">${i}</span><span class="nm">${esc(c.name)}</span></button>`;
+  }).join('') + `<div class="railend" id="railend"></div>`;
+  document.querySelectorAll('.ch').forEach(b => b.onclick = () => go(+b.dataset.i));
+  drawRailEnd();
+}
+function drawRailEnd() {
+  const h = state.health;
+  const bits = h
+    ? [`${h.docs.toLocaleString()} documents`, h.dataset, h.nlp?.ok ? '' : 'models offline']
+    : ['connecting'];
+  $('railend').innerHTML = bits.filter(Boolean).map(esc).join(' &nbsp; ');
+}
+function note(text, bad) {
+  $('msg').innerHTML = `<div class="banner${bad?' bad':''}">${esc(text)}</div>`;
+}
+
+function go(i) {
+  state.ch = Math.max(0, Math.min(CHAPTERS.length - 1, i));
+  history.replaceState(null, '', `#${CHAPTERS[state.ch].id}`);
+  drawRail();
+  const c = CHAPTERS[state.ch];
+  $('chTitle').textContent = c.title;
+  $('chThesis').textContent = c.thesis;
+  $('msg').innerHTML = '';
+  render();
+  if (state.ch > 0 && state.q) search();
+}
+
+/* ══ chapter 0: indexing ════════════════════════════════════════════════ */
+function renderIndexing() {
+  const p = state.preview;
+  $('stage').innerHTML = `
+    <div class="grid2">
+      <div class="panel">
+        <h2>The document</h2>
+        <p class="sub">Anything you type here is run through the real analyzer and the real
+          embedding model. Nothing is written to the index.</p>
+        <textarea id="docText" spellcheck="false">${esc(state.docText)}</textarea>
+        <div style="display:flex;gap:9px;margin-top:11px">
+          <button class="btn" id="doIndex">Index it</button>
+          <button class="btn quiet" id="loadDoc">Load one from the corpus</button>
+        </div>
+      </div>
+      <div id="idxOut">${p ? '' : `<div class="panel"><p class="sub" style="margin:0">
+        Press <b>Index it</b> to follow the document through.</p></div>`}</div>
+    </div>
+    ${statsPanel()}`;
+
+  $('doIndex').onclick = runPreview;
+  $('loadDoc').onclick = loadCorpusDoc;
+  $('docText').oninput = e => state.docText = e.target.value;
+  if (p) drawPreview(p);
+}
+
+async function runPreview() {
+  const text = $('docText').value.trim();
+  if (!text) return;
+  state.docText = text;
+  $('doIndex').disabled = true;
   try {
-    const res = await fetch(`demo_queries_${dataset || 'scifact'}.json`);
-    if (!res.ok) return;
-    const d = await res.json();
-    const rows = Object.keys(CAT).filter(c => d[c]?.length).map(cat => {
-      const chips = d[cat].slice(0, 4).map(r =>
-        `<span class="chip" style="--c:${CAT[cat].color}" data-q="${esc(r.text)}"
-           title="${esc(r.teaches)}\n\nBM25 ${r.ndcg.bm25} · dense ${r.ndcg.dense} · RRF ${r.ndcg.rrf}"
-           >${esc(r.text)}</span>`).join('');
-      return `<div class="demorow"><span class="cat">${CAT[cat].label}</span>${chips}</div>`;
-    }).join('');
-    $('demos').innerHTML = `<div class="demos">${rows}</div>`;
-    document.querySelectorAll('.chip').forEach(el => el.onclick = () => {
-      $('q').value = el.dataset.q; search();
-    });
-  } catch (e) { /* curated examples are optional */ }
+    const r = await fetch(`${API}/api/index-preview?text=${encodeURIComponent(text)}`);
+    state.preview = await r.json();
+    drawPreview(state.preview);
+  } catch (e) { note('Could not reach the index: ' + e.message, true); }
+  finally { $('doIndex').disabled = false; }
 }
 
-function note(text, isErr) {
-  $('msg').innerHTML = `<div class="warn${isErr ? ' err' : ''}">${esc(text)}</div>`;
-}
-
-async function search() {
-  const q = $('q').value.trim();
-  if (!q) return;
-  $('msg').innerHTML = ''; $('go').disabled = true; $('wall').textContent = 'searching…';
-
-  const n = $('n').value;
-  const params = new URLSearchParams({
-    q, mode: $('mode').value, k1: $('k1').value, b: $('b').value,
-    rrf_k: $('rrf_k').value, ef_search: $('ef_search').value,
-    bm25_n: n, dense_n: n, rerank_n: $('rerank_n').value,
-    rerank: $('rerank_n').value > 0
-  });
-
-  const t0 = performance.now();
-  try {
-    const res = await fetch(API + '/api/search?' + params);
-    if (!res.ok) throw new Error(await res.text());
-    last = await res.json();
-    $('wall').textContent = `${Math.round(performance.now() - t0)} ms round trip · ${last.totalMs} ms server`;
-    render(last);
-  } catch (e) {
-    note('Search failed: ' + e.message, true);
-    $('wall').textContent = '';
-  } finally { $('go').disabled = false; }
-}
-
-function render(d) {
-  const stages = Object.fromEntries(d.stages.map(s => [s.name, s]));
-  if (d.warnings) note(d.warnings.join(' · '));
-
-  $('out').innerHTML = [
-    timing(d.stages),
-    analyze(stages.analyze),
-    evalTable(d.eval),
-    board(d, stages),
-    raw(d)
-  ].join('');
-
-  document.querySelectorAll('.doc').forEach(el => {
-    el.onclick = () => showDoc(el.dataset.id, d, stages);
-  });
-}
-
-/* ---- timing waterfall ---- */
-function timing(stages) {
-  const max = Math.max(...stages.map(s => s.ms), 1);
-  const rows = stages.map(s => `
-    <div class="bar">
-      <span class="mono">${esc(s.name)}</span>
-      <span class="track"><span class="fill" style="width:${Math.max(100 * s.ms / max, 0.6)}%;
-            background:${COLORS[s.name] || 'var(--dim)'}"></span></span>
-      <span class="num mono">${s.ms} ms</span>
-    </div>`).join('');
-  const total = stages.reduce((a, s) => a + s.ms, 0);
-  return `<section><h2>Stage latency</h2>${rows}
-    <p class="hint">Sum of stages: ${total.toFixed(1)} ms. The cross-encoder dominates —
-    which is exactly why it only ever sees the few dozen candidates the earlier stages hand it.</p>
-    </section>`;
-}
-
-/* ---- analyzer chain ---- */
-function analyze(stage) {
-  if (!stage) return '';
-  const chain = stage.detail.chain, terms = stage.detail.terms;
-  const rows = chain.map((step, i) => {
-    const prev = i ? chain[i - 1].tokens : null;
+function drawPreview(p) {
+  const s = p.summary;
+  const chain = p.analyzer.chain.map((step,i) => {
+    const prev = i ? p.analyzer.chain[i-1].tokens : null;
     const toks = step.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('');
-    const dropped = prev ? prev.filter(p => !step.tokens.includes(p) &&
-        !step.tokens.some(t => p.toLowerCase().startsWith(t.slice(0, Math.max(3, t.length - 2))))) : [];
-    const gone = dropped.map(t => `<span class="tok gone">${esc(t)}</span>`).join('');
+    const gone = prev ? prev.filter(x => !step.tokens.includes(x) && !stemmedFrom(x, step.tokens))
+      .map(t => `<span class="tok gone">${esc(t)}</span>`).join('') : '';
     return `<div class="chainrow"><span class="f mono">${esc(step.filter)}</span>
             <span>${toks}${gone}</span></div>`;
   }).join('');
 
-  const tbl = `<table><thead><tr><th>term</th><th>df</th><th>idf</th></tr></thead><tbody>
-    ${terms.map(t => `<tr><td class="mono">${esc(t.term)}</td><td>${t.df}</td><td>${t.idf}</td></tr>`).join('')}
-    </tbody></table>`;
+  const rows = p.postings.slice(0, 18).map(t => `<tr>
+      <td class="mono">${esc(t.term)}${t.df === 0 ? '<span class="tag">new term</span>' : ''}</td>
+      <td class="mono">${t.tf}</td>
+      <td class="mono" style="color:var(--mute)">${t.positions.slice(0,8).join(' ')}${
+        t.positions.length > 8 ? ' …' : ''}</td>
+      <td class="mono">${t.df.toLocaleString()}</td>
+      <td class="mono">${t.idf}</td></tr>`).join('');
 
-  return `<section><h2>Stage 0 — Analysis</h2>
-    <div class="chain">${rows}</div>
-    <p class="hint">The query goes through the same filter chain the documents did at index
-    time. A term that survives this chain is what actually gets looked up in the inverted index.</p>
-    <details open><summary>Term statistics</summary>${tbl}</details></section>`;
+  const v = p.vector;
+  const vecHtml = v && v.values ? `
+    <div class="vec">${v.values.map(x => {
+      const h = Math.min(100, Math.abs(x) * 420);
+      return `<i style="height:${h}%;background:${x >= 0 ? 'var(--rank)' : 'var(--lex)'};
+              opacity:${0.35 + Math.min(0.65, Math.abs(x) * 5)}"></i>`;
+    }).join('')}</div>
+    <div class="kv" style="margin-top:11px">
+      <div><span>model</span><b>${esc(v.model.split('/').pop())}</b></div>
+      <div><span>dimensions</span><b>${v.dim}</b></div>
+      <div><span>length</span><b>${v.norm}</b></div>
+      <div><span>size</span><b>${v.bytes} bytes</b></div>
+      <div><span>computed in</span><b>${v.ms} ms</b></div>
+    </div>
+    <p class="note">Every document in the index is one of these. Searching by meaning means
+      finding the ones whose arrows point the same way as the query's — which is why the
+      length is always 1: only direction carries meaning.</p>`
+    : `<p class="sub">The embedding model is not reachable, so only the word half ran.</p>`;
+
+  $('idxOut').innerHTML = `
+    <div class="panel">
+      <h2>1 &nbsp;Split it into terms</h2>
+      <p class="sub">Each filter rewrites the token stream. Only what survives all five is
+        ever searchable — which is why a search for “deficiencies” finds “deficiency”.</p>
+      ${chain}
+    </div>
+    <div class="panel">
+      <h2>2 &nbsp;Write it into the postings</h2>
+      <p class="sub">One row per distinct term. Each one appends this document to that term's
+        posting list, with the positions it appeared at. <b>df</b> is how many documents
+        already contain the term — the whole basis of BM25's idea that rare words matter more.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>term</th><th>times here</th><th>at positions</th>
+          <th>documents already</th><th>idf</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      ${p.postings.length > 18 ? `<p class="note">${p.postings.length - 18} more terms not shown.</p>` : ''}
+      <div class="kv" style="margin-top:14px">
+        <div><span>tokens</span><b>${s.tokensProduced}</b></div>
+        <div><span>distinct terms</span><b>${s.uniqueTerms}</b></div>
+        <div><span>never seen before</span><b>${s.termsNewToThisIndex}</b></div>
+        <div><span>index size</span><b>${s.docsInIndex.toLocaleString()} docs</b></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>3 &nbsp;Turn it into a point in space</h2>
+      <p class="sub">The same text, read by a neural network and squeezed into
+        ${v?.dim ?? 384} numbers — one bar each, height for size and colour for sign. No single
+        bar means anything on its own; only the whole pattern does.</p>
+      ${vecHtml}
+    </div>`;
 }
 
-/* ---- per-stage metrics ---- */
-function evalTable(ev) {
-  if (!ev || !ev.judged) {
-    return `<section><h2>Evaluation</h2><p class="hint">${esc(ev?.note ||
-      'No relevance judgments for this query.')} Pick a benchmark query to see per-stage metrics.</p></section>`;
-  }
-  const metrics = ['ndcg@10', 'recall@10', 'recall@100', 'mrr'];
-  const stages = Object.keys(ev.perStage);
-  const best = {};
-  metrics.forEach(m => best[m] = Math.max(...stages.map(s => ev.perStage[s][m])));
-
-  return `<section><h2>Evaluation — query ${esc(ev.qid)}, ${ev.relevantTotal} relevant doc(s)</h2>
-    <table><thead><tr><th>after stage</th>${metrics.map(m => `<th>${m}</th>`).join('')}
-      <th>retrieved</th></tr></thead><tbody>
-    ${stages.map(s => `<tr><td class="mono">${esc(s)}</td>
-      ${metrics.map(m => `<td class="${ev.perStage[s][m] === best[m] && best[m] > 0 ? 'best' : ''}">${
-        ev.perStage[s][m].toFixed(3)}</td>`).join('')}
-      <td>${ev.perStage[s].retrieved}</td></tr>`).join('')}
-    </tbody></table>
-    <p class="hint">Same query, measured after each stage. This is the whole argument for the
-    pipeline in one table.</p></section>`;
+function stemmedFrom(word, tokens) {
+  return tokens.some(t => word.toLowerCase().startsWith(t.slice(0, Math.max(3, t.length - 2))));
 }
 
-/* ---- the four stage rankings ---- */
-function board(d, stages) {
-  const order = ['bm25', 'dense', 'rrf', 'rerank'].filter(n => stages[n]?.results?.length);
-  const cols = order.map(name => {
-    const s = stages[name];
+function statsPanel() {
+  const s = state.stats;
+  if (!s || !s.bytesByComponent) return '';
+  const parts = Object.entries(s.bytesByComponent).filter(([,b]) => b > 1000)
+    .sort((a,b) => b[1] - a[1]);
+  const max = parts[0][1];
+  return `<div class="panel">
+    <h2>What the finished index costs</h2>
+    <p class="sub">${s.docs.toLocaleString()} documents and ${s.uniqueTerms.toLocaleString()}
+      distinct terms, on disk. The word index is the cheap half.</p>
+    ${parts.map(([k,b]) => `<div class="bar">
+      <span>${esc(k)}</span>
+      <span class="track"><span class="fill" style="width:${100*b/max}%;background:${
+        k.includes('hnsw') ? 'var(--sem)' : k.includes('inverted') ? 'var(--lex)' : 'var(--rule)'
+      }"></span></span>
+      <span class="num mono">${(b/1e6).toFixed(1)} MB</span></div>`).join('')}
+  </div>`;
+}
+
+async function loadCorpusDoc() {
+  try {
+    const qs = await (await fetch(`${API}/api/queries?limit=80`)).json();
+    const pick = qs.queries[Math.floor(Math.random() * qs.queries.length)];
+    const r = await (await fetch(
+      `${API}/api/search?mode=bm25_only&rerank=false&explain=false&bm25_n=1&q=${
+        encodeURIComponent(pick.text)}`)).json();
+    const id = r.stages.find(s => s.name === 'bm25')?.results?.[0]?.docId;
+    if (!id) return;
+    const doc = await (await fetch(`${API}/api/doc/${encodeURIComponent(id)}`)).json();
+    state.docText = [doc.title, doc.text].filter(Boolean).join('\n\n');
+    $('docText').value = state.docText;
+    runPreview();
+  } catch (e) { note('Could not load a document: ' + e.message, true); }
+}
+
+/* ══ chapters 1-5: searching ════════════════════════════════════════════ */
+function renderSearch() {
+  const c = CHAPTERS[state.ch];
+  $('stage').innerHTML = `
+    <div class="ask">
+      <input id="q" type="text" value="${esc(state.q)}" spellcheck="false"
+             placeholder="Ask something, or pick an example below">
+      <button class="btn" id="go">Search</button>
+    </div>
+    <div id="examples"></div>
+    ${knobsHtml(c)}
+    <div id="results"></div>`;
+
+  $('go').onclick = search;
+  $('q').onkeydown = e => { if (e.key === 'Enter') { state.q = $('q').value; search(); } };
+  $('q').oninput = e => state.q = e.target.value;
+  c.knobs.forEach(k => {
+    const el = $('k_' + k);
+    if (el) el.onchange = () => { state.knob[k] = el.value; if (state.last) search(); };
+  });
+  drawExamples();
+  if (state.last) drawResults();
+}
+
+const KNOB_META = {
+  k1:{ label:'k1', stage:'bm25', step:0.1, hint:'how fast repeated words stop helping' },
+  b:{ label:'b', stage:'bm25', step:0.05, hint:'how much document length is penalised' },
+  n:{ label:'candidates', stage:null, step:10 },
+  ef_search:{ label:'efSearch', stage:'dense', step:10, hint:'how wide the graph walk is' },
+  rrf_k:{ label:'k', stage:'rrf', step:10, hint:'how much top ranks dominate' },
+  rerank_n:{ label:'rerank top', stage:'rerank', step:10 },
+};
+function knobsHtml(c) {
+  return `<div class="knobs">${c.knobs.map(k => {
+    const m = KNOB_META[k];
+    const hue = m.stage ? HUE[m.stage] : 'var(--paper)';
+    return `<span class="knob" ${m.stage?`data-stage="${m.stage}"`:''} style="--c:${hue}"
+      ${m.hint?`title="${esc(m.hint)}"`:''}><b>${esc(m.label)}</b>
+      <input id="k_${k}" type="number" step="${m.step}" value="${state.knob[k]}"></span>`;
+  }).join('')}</div>`;
+}
+
+function drawExamples() {
+  const d = state.demos;
+  if (!d) return;
+  const CAT = { 'lexical-win':['words win','var(--lex)'], 'semantic-win':['meaning wins','var(--sem)'],
+                'fusion-win':['fusion wins','var(--fuse)'] };
+  // Early chapters only show the contrast they can actually explain.
+  const show = state.ch <= 1 ? ['lexical-win']
+             : state.ch === 2 ? ['lexical-win','semantic-win'] : Object.keys(CAT);
+  $('examples').innerHTML = show.filter(k => d[k]?.length).map(k => `
+    <div class="exrow"><span class="cat">${CAT[k][0]}</span>
+      ${d[k].slice(0,3).map(r => `<span class="chip" style="--c:${CAT[k][1]}"
+        data-q="${esc(r.text)}" title="${esc(r.teaches)}">${esc(r.text)}</span>`).join('')}
+    </div>`).join('');
+  document.querySelectorAll('.chip').forEach(el => el.onclick = () => {
+    state.q = el.dataset.q; $('q').value = state.q; search();
+  });
+}
+
+async function search() {
+  const c = CHAPTERS[state.ch];
+  state.q = ($('q')?.value || state.q).trim();
+  if (!state.q || state.busy) return;
+  state.busy = true; $('go').disabled = true; $('msg').innerHTML = '';
+
+  const p = new URLSearchParams({
+    q: state.q, mode: c.req.mode, rerank: c.req.rerank,
+    k1: state.knob.k1, b: state.knob.b,
+    bm25_n: state.knob.n, dense_n: state.knob.n,
+    ef_search: state.knob.ef_search, rrf_k: state.knob.rrf_k,
+    rerank_n: c.req.rerank ? state.knob.rerank_n : 0,
+  });
+  try {
+    const res = await fetch(`${API}/api/search?${p}`);
+    if (!res.ok) throw new Error((await res.text()).slice(0, 200));
+    state.last = await res.json();
+    if (state.last.warnings) note(state.last.warnings.join(' · '));
+    drawResults();
+  } catch (e) { note('Search failed: ' + e.message, true); }
+  finally { state.busy = false; const g = $('go'); if (g) g.disabled = false; }
+}
+
+function drawResults() {
+  const d = state.last, c = CHAPTERS[state.ch];
+  const st = Object.fromEntries(d.stages.map(s => [s.name, s]));
+  const cols = c.cols.filter(n => st[n]?.results?.length);
+
+  const blocks = [analysisPanel(st.analyze, c)];
+  if (state.ch >= 4) blocks.push(latencyPanel(d.stages));
+  if (state.ch === 5) blocks.push(evalPanel(d.eval));
+  blocks.push(boardPanel(cols, st, d, c));
+  if (state.ch === 3 && st.rrf) blocks.push(rrfPanel(st.rrf, d));
+  if (state.ch === 2 && st.dense) blocks.push(densePanel(st.dense, st.bm25));
+  if (state.ch < 4) blocks.push(latencyPanel(d.stages));
+  if (state.ch === 5) blocks.push(benchPanel());
+  blocks.push(rawPanel(d));
+
+  $('results').innerHTML = blocks.filter(Boolean).join('');
+  document.querySelectorAll('.doc').forEach(el =>
+    el.onclick = () => showDoc(el.dataset.id, d, st));
+}
+
+function analysisPanel(stage, c) {
+  if (!stage) return '';
+  const terms = stage.detail.terms;
+  const last = stage.detail.chain[stage.detail.chain.length - 1];
+  return `<div class="panel">
+    <h2>What the engine actually searched for</h2>
+    <p class="sub">Your words after the same five filters every document went through.
+      Rare terms (high idf) do most of the work in BM25.</p>
+    <div>${last.tokens.map((t,i) => `<span class="tok">${esc(t)}</span>`).join('')}</div>
+    <div class="scroll" style="margin-top:13px"><table>
+      <thead><tr><th>term</th><th>documents containing it</th><th>idf</th></tr></thead>
+      <tbody>${terms.map(t => `<tr><td class="mono">${esc(t.term)}</td>
+        <td class="mono">${t.df.toLocaleString()}</td><td class="mono">${t.idf}</td></tr>`).join('')}
+      </tbody></table></div>
+    <details style="margin-top:10px"><summary>Every filter, step by step</summary>
+      <div style="margin-top:8px">${stage.detail.chain.map(s =>
+        `<div class="chainrow"><span class="f mono">${esc(s.filter)}</span>
+         <span>${s.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('')}</span></div>`
+      ).join('')}</div></details>
+  </div>`;
+}
+
+function latencyPanel(stages) {
+  const max = Math.max(...stages.map(s => s.ms), 1);
+  const total = stages.reduce((a,s) => a + s.ms, 0);
+  const slowest = stages.reduce((a,s) => s.ms > a.ms ? s : a);
+  return `<div class="panel">
+    <h2>Where the time went</h2>
+    <p class="sub">${total.toFixed(0)} ms in total, and ${
+      (100*slowest.ms/total).toFixed(0)}% of it in <b>${esc(slowest.name)}</b>.</p>
+    ${stages.map(s => `<div class="bar">
+      <span class="mono">${esc(s.name)}</span>
+      <span class="track"><span class="fill" style="width:${Math.max(100*s.ms/max,0.4)}%;
+        background:${HUE[s.name] || 'var(--rule)'}"></span></span>
+      <span class="num mono">${s.ms} ms</span></div>`).join('')}
+    ${state.ch >= 4 ? `<p class="note">The cross-encoder is roughly a thousand times slower
+      per document than BM25. Scoring the whole collection with it would take minutes, which
+      is the entire reason the earlier stages exist.</p>` : ''}
+  </div>`;
+}
+
+function boardPanel(cols, st, d, c) {
+  const body = cols.map(name => {
+    const s = st[name];
     const docs = s.results.slice(0, 12).map(r => docCard(r, d, name)).join('');
-    return `<div class="col" style="--c:${COLORS[name]}">
-      <div class="colhead"><span class="n">${LABEL[name]}</span>
-        <span class="t">${s.results.length} · ${s.ms}ms</span></div>
-      ${docs}</div>`;
+    return `<div class="col" style="--c:${HUE[name]}">
+      <div class="colhead"><span class="n">${esc(TITLE[name])}</span>
+        <span class="t">${s.ms} ms</span></div>${docs}</div>`;
   }).join('');
-
-  const rrf = stages.rrf;
-  const overlapNote = rrf ? `<p class="hint">Of ${rrf.detail.uniqueDocs} distinct candidates,
-    only ${rrf.detail.overlap} were found by <em>both</em> retrievers — the rest is each retriever
-    covering for the other's blind spot. Gold left edge = judged relevant.</p>` : '';
-
-  return `<section><h2>Candidate flow — top 12 per stage</h2>
-    <div class="board">${cols}</div>${overlapNote}</section>`;
+  const only = st.rrf ? `<p class="note">Of ${st.rrf.detail.uniqueDocs} documents found in
+    total, only ${st.rrf.detail.overlap} were found by <em>both</em> retrievers. The rest is
+    each one covering for the other's blind spot.</p>` : '';
+  const relNote = d.eval?.judged
+    ? `<p class="note">Documents marked ✓ are the ones human judges called relevant for this
+       query. Watch them climb as stages are added.</p>` : '';
+  return `<div class="panel">
+    <h2>${cols.length === 1 ? 'What came back' : 'The same query, ranked ' + cols.length + ' ways'}</h2>
+    <p class="sub">Top 12 of each. Click any document to see why it scored what it did.</p>
+    <div class="board" style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))">${body}</div>
+    ${only}${relNote}</div>`;
 }
 
 function docCard(r, d, stage) {
   const meta = d.docs[r.docId] || {};
-  const rel = meta.relevance > 0 ? ' rel' : '';
-  let right = `<span class="sc mono">${fmtScore(r.score, stage)}</span>`;
-  if (stage === 'rerank' && r.delta !== 0) {
-    const dir = r.delta > 0 ? 'up' : 'down';
-    right += ` <span class="delta ${dir}">${r.delta > 0 ? '▲' : '▼'}${Math.abs(r.delta)}</span>`;
+  let right = `<span class="sc">${fmtScore(r.score, stage)}</span>`;
+  if (stage === 'rerank' && r.delta) {
+    right += ` <span class="delta ${r.delta>0?'up':'down'}">${r.delta>0?'▲':'▼'}${
+      Math.abs(r.delta)}</span>`;
   }
-  const badges = (stage === 'rrf' && r.foundBy?.length === 1)
-    ? `<span class="badge">${esc(r.foundBy[0])} only</span>` : '';
-  const trunc = (stage === 'rerank' && r.truncated) ? '<span class="badge">truncated</span>' : '';
-
-  return `<div class="doc${rel}" data-id="${esc(r.docId)}">
-    <div class="top"><span>#${r.rank} · ${esc(r.docId)}${badges}${trunc}</span>${right}</div>
+  const tags = (stage === 'rrf' && r.foundBy?.length === 1)
+      ? `<span class="tag">${esc(r.foundBy[0])} only</span>` : '';
+  const trunc = (stage === 'rerank' && r.truncated) ? '<span class="tag">cut at 512</span>' : '';
+  return `<div class="doc${meta.relevance>0?' rel':''}" data-id="${esc(r.docId)}">
+    <div class="top"><span>${r.rank}${tags}${trunc}</span>${right}</div>
     <div class="ttl">${esc(meta.title || meta.snippet || '')}</div></div>`;
 }
+const fmtScore = (v, s) => s === 'rrf' ? v.toFixed(5) : s === 'dense' ? v.toFixed(3) : v.toFixed(2);
 
-function fmtScore(v, stage) {
-  if (stage === 'rrf') return v.toFixed(5);
-  if (stage === 'dense') return v.toFixed(3);
-  return v.toFixed(2);
+function densePanel(dense, bm25) {
+  const dd = dense.detail;
+  const lex = new Set((bm25?.results || []).map(r => r.docId));
+  const onlyDense = dense.results.filter(r => !lex.has(r.docId)).length;
+  return `<div class="panel">
+    <h2>How the vector index found them</h2>
+    <p class="sub">It did not read every document. The vectors are wired into a graph, and
+      the search walks it greedily towards the query.</p>
+    <div class="kv">
+      <div><span>vectors visited</span><b>${dd.visitedCount.toLocaleString()}${
+        state.health ? ' of ' + state.health.docs.toLocaleString() : ''}</b></div>
+      <div><span>that is</span><b>${dd.visitedFraction}%</b></div>
+      <div><span>embedding the query</span><b>${dd.embedMs} ms</b></div>
+      <div><span>walking the graph</span><b>${dd.graphMs} ms</b></div>
+    </div>
+    <p class="note">${onlyDense} of these ${dense.results.length} documents were invisible to
+      BM25 — no shared term with the query at all. That gap is what the second index is for.</p>
+  </div>`;
 }
 
-/* ---- per-doc drill-down ---- */
-function showDoc(docId, d, stages) {
+function rrfPanel(rrf, d) {
+  const rows = rrf.results.slice(0, 8).map(r => `<tr>
+      <td class="mono">${r.rank}</td>
+      <td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
+        esc((d.docs[r.docId]||{}).title || r.docId)}</td>
+      <td class="mono" style="color:var(--lex)">${r.contrib.bm25 ? r.contrib.bm25.rank : '—'}</td>
+      <td class="mono" style="color:var(--sem)">${r.contrib.dense ? r.contrib.dense.rank : '—'}</td>
+      <td class="mono" style="color:var(--mute);text-align:left">${esc(r.formula)}</td></tr>`).join('');
+  return `<div class="panel">
+    <h2>The arithmetic, in full</h2>
+    <p class="sub">No score normalisation anywhere. Each list contributes 1/(k+rank), and a
+      document that both retrievers liked a bit beats one that only one of them loved.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>document</th><th>BM25 rank</th><th>dense rank</th>
+        <th style="text-align:left">fused score</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+
+function evalPanel(ev) {
+  if (!ev || !ev.judged) return `<div class="panel"><h2>No judgments for this query</h2>
+    <p class="sub" style="margin:0">Pick one of the examples above — those come with human
+    relevance judgments, so every stage can be scored.</p></div>`;
+  const metrics = ['ndcg@10','recall@10','recall@100','mrr'];
+  const names = { 'ndcg@10':'nDCG@10', 'recall@10':'recall@10', 'recall@100':'recall@100', mrr:'MRR' };
+  const stages = Object.keys(ev.perStage);
+  const best = {};
+  metrics.forEach(m => best[m] = Math.max(...stages.map(s => ev.perStage[s][m])));
+  return `<div class="panel">
+    <h2>Scoring this query after every stage</h2>
+    <p class="sub">${ev.relevantTotal} document${ev.relevantTotal===1?' was':'s were'} judged
+      relevant. nDCG@10 rewards putting them near the top.</p>
+    <table><thead><tr><th>after</th>${metrics.map(m=>`<th>${names[m]}</th>`).join('')}</tr></thead>
+    <tbody>${stages.map(s => `<tr><td style="color:${HUE[s]}">${esc(TITLE[s]||s)}</td>
+      ${metrics.map(m => `<td class="mono ${ev.perStage[s][m]===best[m]&&best[m]>0?'best':''}">${
+        ev.perStage[s][m].toFixed(3)}</td>`).join('')}</tr>`).join('')}
+    </tbody></table>
+    <p class="note">One query is an anecdote. The table below is all of them.</p>
+  </div>`;
+}
+
+function benchPanel() {
+  const b = state.bench;
+  if (!b || !b.perStage) return '';
+  const rows = Object.entries(b.perStage).map(([s,m]) => `<tr>
+    <td style="color:${HUE[s]}">${esc(TITLE[s]||s)}</td>
+    <td class="mono">${(m['ndcg@10']??0).toFixed(3)}</td>
+    <td class="mono">${(m['recall@100']??0).toFixed(3)}</td>
+    <td class="mono">${(m.mrr??0).toFixed(3)}</td>
+    <td class="mono">${m.avgMs} ms</td></tr>`).join('');
+  return `<div class="panel">
+    <h2>Every judged query in the collection</h2>
+    <p class="sub">${b.queries.toLocaleString()} queries, averaged. This is the honest version
+      of the table above.</p>
+    <table><thead><tr><th>after</th><th>nDCG@10</th><th>recall@100</th><th>MRR</th>
+      <th>per query</th></tr></thead><tbody>${rows}</tbody></table>
+  </div>`;
+}
+
+function showDoc(docId, d, st) {
   const meta = d.docs[docId] || {};
-  const lines = [];
-
-  const bm = stages.bm25?.results.find(r => r.docId === docId);
+  const out = [];
+  const bm = st.bm25?.results.find(r => r.docId === docId);
   if (bm?.explain) {
-    lines.push(`BM25 score ${bm.explain.total}  (k1=${bm.explain.k1}, b=${bm.explain.b})`);
-    lines.push('');
-    lines.push('term          contrib      tf     df      idf    dl   avgdl');
-    bm.explain.terms.forEach(t => lines.push(
-      `${String(t.term).padEnd(13)} ${String(t.contrib).padStart(7)} ${
-       String(t.tf ?? '-').padStart(7)} ${String(t.df ?? '-').padStart(6)} ${
-       String(t.idf ?? '-').padStart(8)} ${String(t.dl ?? '-').padStart(5)} ${
-       String(t.avgdl ?? '-').padStart(7)}`));
-    lines.push('');
+    out.push(`<h2>Why BM25 scored it ${bm.explain.total}</h2>
+      <p class="sub">k1 = ${bm.explain.k1}, b = ${bm.explain.b}. Each term contributes
+      independently; they simply add up.</p>
+      <div class="scroll"><table><thead><tr><th>term</th><th>contributes</th><th>times in doc</th>
+      <th>documents with it</th><th>idf</th><th>doc length</th><th>average</th></tr></thead><tbody>
+      ${bm.explain.terms.map(t => `<tr><td class="mono">${esc(t.term)}</td>
+        <td class="mono" style="color:var(--lex)">${t.contrib}</td><td class="mono">${t.tf ?? '—'}</td>
+        <td class="mono">${(t.df ?? 0).toLocaleString()}</td><td class="mono">${t.idf ?? '—'}</td>
+        <td class="mono">${t.dl ?? '—'}</td><td class="mono">${t.avgdl ?? '—'}</td></tr>`).join('')}
+      </tbody></table></div>`);
   }
+  const rr = st.rrf?.results.find(r => r.docId === docId);
+  if (rr) out.push(`<p class="note" style="font-size:15px">Fused: <span class="mono">${
+    esc(rr.formula)}</span></p>`);
+  const rk = st.rerank?.results.find(r => r.docId === docId);
+  if (rk) out.push(`<p class="note" style="font-size:15px">Cross-encoder scored it
+    <b class="mono">${rk.score}</b> and moved it from ${rk.prevRank} to ${rk.rank}${
+    rk.truncated ? `, having read only the first 512 tokens of ${rk.docTokens}` : ''}.</p>`);
 
-  const rrf = stages.rrf?.results.find(r => r.docId === docId);
-  if (rrf) lines.push(`RRF: ${rrf.formula}`, '');
+  const where = ['bm25','dense','rrf','rerank'].filter(n => st[n]).map(n => {
+    const r = st[n].results.find(x => x.docId === docId);
+    return `<div><span>${esc(TITLE[n])}</span><b style="color:${HUE[n]}">${r?'#'+r.rank:'not found'}</b></div>`;
+  }).join('');
 
-  const rr = stages.rerank?.results.find(r => r.docId === docId);
-  if (rr) lines.push(`Cross-encoder: ${rr.score}  (rank ${rr.prevRank} → ${rr.rank}, ${
-    rr.docTokens} doc tokens${rr.truncated ? ', TRUNCATED at 512' : ''})`, '');
-
-  const ranks = ['bm25', 'dense', 'rrf', 'rerank']
-    .map(n => { const r = stages[n]?.results.find(x => x.docId === docId);
-                return `${n}: ${r ? '#' + r.rank : '—'}`; }).join('   ');
-
-  $('msg').innerHTML = `<section>
-    <h2>${esc(docId)} ${meta.relevance > 0 ? '· judged relevant (grade ' + meta.relevance + ')' : ''}</h2>
-    <p style="margin:0 0 8px"><b>${esc(meta.title || '')}</b></p>
-    <p class="hint" style="margin-bottom:10px">${esc(ranks)}</p>
-    <pre>${esc(lines.join('\n') || 'no stage detail for this document')}</pre>
-    <details><summary>Snippet</summary><pre>${esc(meta.snippet || '')}</pre></details>
-    </section>`;
-  $('msg').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  $('msg').innerHTML = `<div class="panel">
+    <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start">
+      <div><h2>${esc(meta.title || docId)}</h2>
+        <p class="sub" style="margin:4px 0 0">${esc(docId)}${
+          meta.relevance>0 ? ' — judged relevant' : ''}</p></div>
+      <button class="btn quiet" onclick="document.getElementById('msg').innerHTML=''">Close</button>
+    </div>
+    <div class="kv" style="margin:14px 0">${where}</div>
+    ${out.join('')}
+    <details style="margin-top:12px"><summary>The document</summary>
+      <p class="note" style="font-size:14.5px;color:var(--paper)">${esc(meta.snippet||'')}</p></details>
+  </div>`;
+  $('msg').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
-function raw(d) {
-  return `<section><h2>Raw response</h2>
-    <p class="hint">Every number above comes from this payload — the UI computes nothing of
-    its own. Same thing you get from <code>curl</code>.</p>
-    <details><summary>Show JSON (${(JSON.stringify(d).length / 1024).toFixed(0)} KB)</summary>
-    <pre>${esc(JSON.stringify(d, null, 2))}</pre></details></section>`;
+function rawPanel(d) {
+  return `<div class="panel">
+    <h2>Everything above came from one HTTP response</h2>
+    <p class="sub">This page computes nothing of its own. Open the network tab and you will
+      find exactly these numbers.</p>
+    <details><summary>Show the JSON (${(JSON.stringify(d).length/1024).toFixed(0)} KB)</summary>
+      <pre style="margin-top:9px">${esc(JSON.stringify(d, null, 2))}</pre></details>
+  </div>`;
 }
 
-$('go').onclick = search;
-$('q').onkeydown = e => { if (e.key === 'Enter') search(); };
-['mode','k1','b','rrf_k','ef_search','n','rerank_n'].forEach(id =>
-  $(id).onchange = () => { if (last) search(); });
+function render() { state.ch === 0 ? renderIndexing() : renderSearch(); }
+
+/* ══ boot ═══════════════════════════════════════════════════════════════ */
+async function boot() {
+  try {
+    state.health = await (await fetch(`${API}/api/health`)).json();
+    if (!state.health.nlp?.ok) note('The embedding and reranking models are offline, so only '
+      + 'the word-matching half of the pipeline will run.');
+  } catch (e) { note('Cannot reach the search service. Is it running on :8080?', true); }
+
+  await Promise.all([
+    fetch(`${API}/api/stats`).then(r => r.json()).then(j => state.stats = j).catch(()=>{}),
+    fetch(`${API}/api/benchmark`).then(r => r.ok ? r.json() : null).then(j => state.bench = j).catch(()=>{}),
+    fetch(`${API}/api/demo-queries`).then(r => r.ok ? r.json() : null)
+      .then(j => state.demos = j).catch(()=>{}),
+  ]);
+
+  if (!state.q) {
+    const first = state.demos?.['semantic-win']?.[0] || state.demos?.['lexical-win']?.[0];
+    if (first) state.q = first.text;
+  }
+  state.docText = state.docText || DEFAULT_DOC;
+
+  const hash = location.hash.slice(1);
+  const idx = CHAPTERS.findIndex(c => c.id === hash);
+  go(idx >= 0 ? idx : 0);
+}
+
+const DEFAULT_DOC = "Reciprocal rank fusion combines several ranked lists without needing "
+  + "their scores to be comparable. Each list contributes one over k plus the rank, and the "
+  + "sums decide the final ordering.";
+
+addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  if (e.key === '/' && !typing) { e.preventDefault(); $('q')?.focus(); return; }
+  if (typing) return;
+  if (e.key === 'ArrowRight') go(state.ch + 1);
+  if (e.key === 'ArrowLeft') go(state.ch - 1);
+  if (/^[0-5]$/.test(e.key)) go(+e.key);
+});
+
 boot();
 </script>
 </body>

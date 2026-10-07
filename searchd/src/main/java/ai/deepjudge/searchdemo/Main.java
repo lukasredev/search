@@ -1,6 +1,7 @@
 package ai.deepjudge.searchdemo;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -33,18 +34,31 @@ public final class Main {
     Path indexDir = Config.indexRoot().resolve(datasetName);
     Path dataDir = Config.dataRoot().resolve(datasetName);
 
-    if (!Files.exists(indexDir.resolve("segments_1")) && !Files.exists(indexDir)) {
-      System.err.println("no index at " + indexDir + " — run the indexer first");
+    // Checked before opening: the index volume is mounted read-only in Docker, so
+    // FSDirectory.open() would fail trying to create a missing directory.
+    if (!Files.isDirectory(indexDir)) {
+      System.err.printf("No index directory at %s — run the indexer for '%s' first.%n",
+          indexDir.toAbsolutePath(), datasetName);
       System.exit(1);
     }
-
     var dir = FSDirectory.open(indexDir);
+    if (!DirectoryReader.indexExists(dir)) {
+      System.err.printf("""
+          No Lucene index at %s.
+
+          Build one first:
+            docker compose run --rm indexer %s     (in Docker)
+            make index DATASET=%s                  (locally)
+          %n""", indexDir.toAbsolutePath(), datasetName, datasetName);
+      System.exit(1);
+    }
     var reader = DirectoryReader.open(dir);
     var searcher = new IndexSearcher(reader);
     var analyzer = new DemoAnalyzer();
     var dataset = Dataset.load(dataDir);
     var nlp = new NlpClient(Config.nlpUrl(), Duration.ofMinutes(2));
     var pipeline = new SearchPipeline(searcher, analyzer, dataset, nlp);
+    var indexStory = new IndexStory(reader, analyzer, nlp);
 
     System.out.printf("serving %s: %d docs, %d judged queries%n",
         datasetName, reader.numDocs(), dataset.queries().size());
@@ -58,6 +72,8 @@ public final class Main {
         config.spaRoot.addFile("/", uiDir + "/index.html", io.javalin.http.staticfiles.Location.EXTERNAL);
       }
     });
+
+    requireAuthIfConfigured(app);
 
     app.get("/api/health", ctx -> {
       Map<String, Object> out = new LinkedHashMap<>();
@@ -86,6 +102,12 @@ public final class Main {
         ctx.queryParamAsClass("t", String.class).getOrDefault(""),
         ctx.queryParamAsClass("limit", Integer.class).getOrDefault(20))));
 
+    // The indexing story: run arbitrary text through the real analyzer and embedding
+    // model and show everything the index would store, without writing anything.
+    app.get("/api/index-preview", ctx -> ctx.json(indexStory.preview(
+        ctx.queryParamAsClass("text", String.class).getOrDefault(""),
+        ctx.queryParamAsClass("vector", Boolean.class).getOrDefault(true))));
+
     app.get("/api/doc/{id}", ctx -> {
       var hits = searcher.search(new org.apache.lucene.search.TermQuery(
           new Term(Fields.ID, ctx.pathParam("id"))), 1);
@@ -100,7 +122,9 @@ public final class Main {
           "title", d.get(Fields.TITLE),
           "text", d.get(Fields.TEXT),
           "luceneDoc", luceneDoc,
-          "topTerms", topTermsForDoc(reader, luceneDoc, 25)));
+          "topTerms", topTermsForDoc(reader, luceneDoc, 25),
+          // The vector Lucene actually stored for this document, read back from the index.
+          "vector", indexStory.storedVector(luceneDoc)));
     });
 
     app.get("/api/stats", ctx -> {
@@ -109,6 +133,18 @@ public final class Main {
         ctx.contentType("application/json").result(Files.readString(stats));
       } else {
         ctx.json(Map.of("docs", reader.numDocs(), "note", "index_stats.json missing"));
+      }
+    });
+
+    // Curated examples live beside the index, not in the UI bundle: they are produced
+    // from the index by scripts/find_demo_queries.py and change whenever it is rebuilt.
+    app.get("/api/demo-queries", ctx -> {
+      Path demos = indexDir.resolve("demo_queries.json");
+      if (Files.exists(demos)) {
+        ctx.contentType("application/json").result(Files.readString(demos));
+      } else {
+        ctx.json(Map.of("dataset", datasetName, "note",
+            "none generated yet; run scripts/find_demo_queries.py"));
       }
     });
 
@@ -122,16 +158,49 @@ public final class Main {
     });
 
     app.get("/api/queries", ctx -> {
+      // Quora ships 10k judged queries; the dropdown only needs a sample of them.
+      int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(500);
       List<Map<String, Object>> out = new ArrayList<>();
-      dataset.queries().forEach((qid, text) -> out.add(Trace.map(
-          "qid", qid, "text", text, "relevantDocs", dataset.qrelsFor(qid).size())));
-      ctx.json(Trace.map("dataset", datasetName, "queries", out));
+      for (Map.Entry<String, String> e : dataset.queries().entrySet()) {
+        if (out.size() >= limit) break;
+        out.add(Trace.map("qid", e.getKey(), "text", e.getValue(),
+            "relevantDocs", dataset.qrelsFor(e.getKey()).size()));
+      }
+      ctx.json(Trace.map("dataset", datasetName, "total", dataset.queries().size(),
+          "returned", out.size(), "queries", out));
     });
 
     app.exception(NlpClient.NlpUnavailableException.class, (e, ctx) ->
         ctx.status(503).json(Map.of("error", "nlp sidecar unavailable", "detail", e.getMessage())));
 
     app.start(Config.port());
+  }
+
+  /**
+   * Turns on HTTP basic auth when AUTH_USER and AUTH_PASS are both set. Enough to keep a
+   * public demo from being crawled and burning CPU on reranking; put TLS in front of it.
+   */
+  private static void requireAuthIfConfigured(Javalin app) {
+    String user = System.getenv("AUTH_USER");
+    String pass = System.getenv("AUTH_PASS");
+    if (user == null || user.isBlank() || pass == null || pass.isBlank()) {
+      System.out.println("auth: disabled (set AUTH_USER and AUTH_PASS to enable)");
+      return;
+    }
+    byte[] expected = ("Basic " + java.util.Base64.getEncoder()
+        .encodeToString((user + ":" + pass).getBytes(StandardCharsets.UTF_8)))
+        .getBytes(StandardCharsets.UTF_8);
+
+    app.before(ctx -> {
+      String got = ctx.header("Authorization");
+      // Constant-time compare so the header cannot be guessed byte by byte.
+      if (got == null
+          || !java.security.MessageDigest.isEqual(expected, got.getBytes(StandardCharsets.UTF_8))) {
+        ctx.header("WWW-Authenticate", "Basic realm=\"search demo\", charset=\"UTF-8\"");
+        throw new io.javalin.http.UnauthorizedResponse();
+      }
+    });
+    System.out.println("auth: basic auth required");
   }
 
   private static SearchPipeline.Request parse(Context ctx) {

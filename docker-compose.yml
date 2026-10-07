@@ -1,0 +1,119 @@
+# Two long-running services, two one-shot setup jobs.
+#
+#   docker compose --profile setup run --rm fetch quora
+#   docker compose --profile setup run --rm indexer quora
+#   DATASET=quora docker compose up -d
+#
+# The datasets, their cached embeddings and the Lucene index all live in one named
+# volume, so rebuilding images never costs you a re-index.
+
+name: search-demo
+
+x-dataset: &dataset ${DATASET:-scifact}
+
+services:
+  nlp:
+    build:
+      context: .
+      dockerfile: nlp/Dockerfile
+      args:
+        EMBED_MODEL: ${EMBED_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+        RERANK_MODEL: ${RERANK_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+    image: search-demo/nlp:latest
+    environment:
+      TORCH_THREADS: ${TORCH_THREADS:-4}
+      RERANK_MAX_LEN: 512
+    # Not published: only searchd talks to it. Expose it only if you want to poke at
+    # /embed yourself during a talk.
+    expose: ["8081"]
+    restart: unless-stopped
+    mem_limit: ${NLP_MEM:-3g}
+
+  searchd:
+    build:
+      context: .
+      dockerfile: searchd/Dockerfile
+    image: search-demo/searchd:latest
+    depends_on:
+      nlp:
+        condition: service_healthy
+    environment:
+      DATASET: *dataset
+      NLP_URL: http://nlp:8081
+      # Set both to require HTTP basic auth. Leave unset for a local demo.
+      AUTH_USER: ${AUTH_USER:-}
+      AUTH_PASS: ${AUTH_PASS:-}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=70}
+    ports: ["${BIND:-127.0.0.1}:${PORT:-8080}:8080"]
+    volumes:
+      - data:/data:ro
+    restart: unless-stopped
+    mem_limit: ${SEARCHD_MEM:-2g}
+
+  # ── setup jobs: run once, then exit ───────────────────────────────────────
+  fetch:
+    profiles: ["setup"]
+    image: python:3.11-slim
+    working_dir: /work
+    volumes:
+      - ./scripts:/work/scripts:ro
+      - data:/work/data
+    entrypoint: ["python3", "scripts/fetch_dataset.py"]
+    command: ["scifact"]
+
+  indexer:
+    profiles: ["setup"]
+    build:
+      context: .
+      dockerfile: searchd/Dockerfile
+    image: search-demo/searchd:latest
+    depends_on:
+      nlp:
+        condition: service_healthy
+    environment:
+      DATASET: *dataset
+      NLP_URL: http://nlp:8081
+      EMBED_BATCH: ${EMBED_BATCH:-256}
+      # Every vector is held on the heap while the HNSW graph is built: 522k Quora
+      # vectors are about 800 MB before Lucene sees them.
+      INDEX_JAVA_OPTS: ${INDEX_JAVA_OPTS:--Xmx5g}
+    volumes:
+      - data:/data
+    entrypoint: ["entrypoint", "index"]
+    command: []
+    mem_limit: ${INDEX_MEM:-6g}
+
+  bench:
+    profiles: ["setup"]
+    build:
+      context: .
+      dockerfile: searchd/Dockerfile
+    image: search-demo/searchd:latest
+    depends_on:
+      nlp:
+        condition: service_healthy
+    environment:
+      DATASET: *dataset
+      NLP_URL: http://nlp:8081
+    volumes:
+      - data:/data
+    # run --rm bench <dataset> [maxQueries] [rerank|norerank]
+    entrypoint: ["entrypoint", "bench"]
+    command: []
+
+  demos:
+    profiles: ["setup"]
+    image: python:3.11-slim
+    working_dir: /work
+    depends_on:
+      searchd:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/work/scripts:ro
+      - data:/work/data
+    # run --rm demos --dataset quora --topic cs
+    entrypoint: ["python3", "scripts/find_demo_queries.py", "--host", "http://searchd:8080"]
+    command: []
+
+volumes:
+  data:

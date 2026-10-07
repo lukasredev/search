@@ -17,8 +17,21 @@ import argparse
 import json
 import math
 import pathlib
+import re
 import urllib.parse
 import urllib.request
+
+# Topic presets, so the curated examples match the audience in the room. A talk to CS
+# undergraduates wants "how should I start learning programming?", not whichever query
+# happens to have the largest metric delta.
+TOPICS = {
+    "cs": r"\b(program(?:ming|mer)?|cod(?:e|ing)|python|java|javascript|c\+\+|php|ruby|rust|"
+          r"golang|algorithm|software|computer|machine learning|deep learning|neural net|"
+          r"database|sql|linux|unix|data structure|compiler|api|git(?:hub)?|developer|"
+          r"web development|android|ios|app|encryption|cryptograph|network|operating system|"
+          r"recursion|hash|artificial intelligence|data scien|cyber|security|hack|server|"
+          r"framework|html|css|debug|stack overflow|engineering)\b",
+}
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -46,6 +59,8 @@ def main():
     ap.add_argument("--host", default="http://localhost:8080")
     ap.add_argument("--dataset", default="scifact")
     ap.add_argument("--top", type=int, default=5, help="examples to keep per category")
+    ap.add_argument("--topic", help=f"restrict to a preset ({', '.join(TOPICS)}) or a regex")
+    ap.add_argument("--limit", type=int, help="scan at most this many queries")
     args = ap.parse_args()
 
     data = ROOT / "data" / args.dataset
@@ -55,6 +70,13 @@ def main():
         if float(rel) > 0:
             qrels.setdefault(qid, {})[did] = int(float(rel))
     queries = dict(l.rstrip("\n").split("\t", 1) for l in open(data / "queries.tsv"))
+
+    if args.topic:
+        pattern = re.compile(TOPICS.get(args.topic, args.topic), re.I)
+        queries = {q: t for q, t in queries.items() if pattern.search(t)}
+        print(f"topic filter {args.topic!r}: {len(queries)} matching queries")
+    if args.limit:
+        queries = dict(list(queries.items())[: args.limit])
 
     rows = []
     for i, (qid, text) in enumerate(queries.items(), 1):
@@ -96,7 +118,10 @@ def main():
             "rewards the documents both of them half-agreed on."),
     }
 
-    dest = ROOT / "ui" / f"demo_queries_{args.dataset}.json"
+    # Written next to the index so the service can serve it; the UI asks the API for it.
+    dest = ROOT / "data" / "index" / args.dataset / "demo_queries.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    out["topic"] = args.topic
     dest.write_text(json.dumps(out, indent=2))
     print(f"\nwrote {dest}")
     for cat in ("lexical-win", "semantic-win", "fusion-win"):

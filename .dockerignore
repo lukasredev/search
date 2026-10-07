@@ -1,0 +1,9 @@
+data/
+**/target/
+**/.venv/
+**/node_modules/
+**/__pycache__/
+.git/
+*.log
+docs/
+PLAN.md

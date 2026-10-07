@@ -1,0 +1,133 @@
+# Running it on a server
+
+Two containers. `searchd` holds the Lucene index, the retrieval pipeline and the UI;
+`nlp` holds the two transformer models. Datasets and the index live in one named volume,
+so rebuilding images never costs you a re-index.
+
+> **Not verified on this machine.** The box these files were written on has no Docker and
+> no root, so the Dockerfiles and compose file are written but have never been built. The
+> Java service, the pipeline and the UI are all verified natively. Treat the first
+> `docker compose build` as the real test — see [Checking it works](#checking-it-works).
+
+## First run
+
+```bash
+# 1. download and normalise a dataset into the volume (a few MB, no auth)
+docker compose --profile setup run --rm fetch scifact
+
+# 2. build the index. Embeds the corpus, so this is the slow step:
+#    scifact ~2 min, nfcorpus ~1.5 min, quora ~25 min.
+docker compose --profile setup run --rm indexer scifact
+
+# 3. start
+docker compose up -d
+```
+
+Then open <http://localhost:8080>.
+
+Swap datasets with `DATASET`, which every service reads:
+
+```bash
+docker compose --profile setup run --rm fetch quora
+DATASET=quora docker compose --profile setup run --rm indexer quora
+DATASET=quora docker compose up -d
+```
+
+Optional, and worth doing before a talk — both write into the volume and are picked up by
+the running service without a restart:
+
+```bash
+# per-stage metrics over the whole query set, shown in the last chapter
+docker compose --profile setup run --rm bench scifact
+
+# the curated example queries in the UI (needs the service up)
+docker compose --profile setup run --rm demos --dataset scifact --topic cs
+```
+
+## Exposing it
+
+By default the port binds to `127.0.0.1` only, so nothing is reachable from outside the
+host until you say so. To put it on the internet:
+
+```bash
+# .env
+BIND=0.0.0.0
+AUTH_USER=talk
+AUTH_PASS=<something long>
+```
+
+`AUTH_USER` + `AUTH_PASS` turn on HTTP basic auth over the whole service, compared in
+constant time. That is enough to stop a crawler discovering `/api/search` and burning your
+CPU on cross-encoder inference; it is **not** enough on its own, because basic auth sends
+the password in cleartext. Put TLS in front of it — Caddy needs two lines:
+
+```caddyfile
+search.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+The request knobs are clamped server-side regardless (`rerank_n` ≤ 200, candidates ≤ 1000),
+so no query can ask for unbounded work.
+
+## Sizing
+
+| | memory | notes |
+|---|---|---|
+| `nlp` | 1.5–3 GB | both models on CPU; `mem_limit` defaults to 3g |
+| `searchd` | 1–2 GB | scales with index size, not corpus size |
+| `indexer` | 6 GB | **the peak**, and only while indexing |
+
+The indexer holds every vector on the heap at once before Lucene writes the graph — 522k
+Quora vectors are about 800 MB of `float[]`. On a small server, index on a bigger machine
+(or locally) and ship the volume, rather than renting 8 GB you need for 25 minutes a year.
+
+A 2 vCPU / 4 GB instance runs SciFact comfortably. Reranking is the only slow part: about
+55 ms per document on CPU, so a 50-document rerank is ~3 s. `TORCH_THREADS` defaults to 4;
+set it to your core count.
+
+Disk: images are roughly 300 MB (`searchd`) and 1.5–2 GB (`nlp`, mostly torch and the baked
+model weights). The volume holds the dataset, the cached embeddings and the index — 85 MB
+for SciFact, about 2.5 GB for Quora.
+
+## Architecture
+
+Build on the same architecture you deploy to, or build explicitly:
+
+```bash
+docker buildx build --platform linux/amd64 -f searchd/Dockerfile -t search-demo/searchd .
+```
+
+The `nlp` image picks its torch wheel from `TARGETARCH`: on `amd64` it takes the CPU-only
+build from PyTorch's own index, because the PyPI wheel drags in ~2.5 GB of CUDA packages
+that will never be used. On `arm64` the PyPI wheel is already CPU-only.
+
+## Checking it works
+
+```bash
+docker compose config                       # compose file is valid
+docker compose build                        # the real test
+docker compose --profile setup run --rm fetch scifact
+docker compose --profile setup run --rm indexer scifact
+docker compose up -d
+curl -fsS localhost:8080/api/health | jq    # {"ok":true,"docs":5183,"nlp":{"ok":true}}
+curl -fsS "localhost:8080/api/search?q=vitamin+d&rerank=false" | jq '.stages[].name'
+```
+
+`/api/health` reports the sidecar's status too, so one call tells you whether both halves
+are up. If `searchd` exits immediately it will say so: an empty volume produces a message
+telling you to run the indexer, not a stack trace.
+
+## Changing models
+
+Model weights are baked into the `nlp` image at build time so containers start instantly
+and need no network. Changing the model therefore means a rebuild, not just an env var:
+
+```bash
+docker compose build --build-arg RERANK_MODEL=BAAI/bge-reranker-base nlp
+```
+
+Setting `RERANK_MODEL` at runtime alone still works, but the model is then downloaded on
+first use, and the first request pays for it. Note that the embedding model is baked into
+the *index* as well — changing `EMBED_MODEL` means re-running the indexer, since the
+stored vectors came from the old model and comparing across models is meaningless.
