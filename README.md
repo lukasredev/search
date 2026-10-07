@@ -23,9 +23,16 @@ Measured on BEIR SciFact, 5,183 documents, 300 judged queries (`make bench`):
 | BM25 | 0.683 | 0.928 | 0.4 ms |
 | dense | 0.645 | 0.925 | 15 ms |
 | RRF fusion | **0.720** | **0.941** | 0.2 ms |
+| + cross-encoder rerank | 0.693 | 0.941 | 3113 ms |
 
 Neither retriever is better than the other — they are wrong about *different* documents, and
 fusing them beats both. That is the whole argument for a hybrid pipeline, in one table.
+
+And then the fourth row refuses to cooperate: the cross-encoder costs 3 seconds a query and
+makes the ranking *worse*. That is not a bug — it reproduces across four reranker models and
+three pool depths, and it matches the published BEIR figures. See
+[docs/reranker-findings.md](docs/reranker-findings.md); it is the most interesting slide in the
+deck, not the broken one.
 
 ## Running it
 
@@ -85,7 +92,7 @@ you: the cross-encoder costs ~60 ms per document, so scoring all 5,183 would tak
 That is why there is a candidate-retrieval phase at all. Documents past the model's 512-token
 window are flagged `truncated` — a real gotcha, judged on their opening paragraph alone.
 
-**Evaluation.** Pick any of the 300 benchmark queries and the eval table fills in with nDCG@10,
+**Measuring whether a stage earns its place.** Pick any of the 300 benchmark queries and the eval table fills in with nDCG@10,
 recall and MRR *after each stage*, with judged-relevant documents gold-bordered in the rankings
 so you can watch relevance migrate to the top.
 

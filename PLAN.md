@@ -234,7 +234,7 @@ search/
 | **P1** ✅ index + BM25 | SciFact + NFCorpus fetched, `Indexer`, `/api/search` + `explain()` decomposition | **nDCG@10 = 0.683** vs published BEIR BM25 baseline 0.665 ✓ |
 | **P2** ✅ dense | nlp sidecar, cached embedding pass, `KnnFloatVectorField` + instrumented leaf-level HNSW search | **nDCG@10 = 0.645**, exactly the published all-MiniLM-L6-v2 figure ✓ |
 | **P3** ✅ RRF | fusion stage, per-list contributions and the arithmetic in the trace | **nDCG@10 = 0.720 > both parents** ✓ |
-| **P4** ✅ rerank | cross-encoder stage, rank deltas, truncation flags; plain UI | ~60 ms/doc measured; full-set figure in `data/index/scifact/benchmark.json` |
+| **P4** ✅ rerank | cross-encoder stage, rank deltas, truncation flags; plain UI | ~55 ms/doc; **rerank makes SciFact worse (0.720 → 0.693)** — reproduced across 4 models and 3 pool depths, see `docs/reranker-findings.md` |
 | **P5** insight UI | panels 1–7 above | walk every panel against 3 real queries |
 | **P6** eval | `/api/benchmark` batch run + cached stage×metric table, panel 8 | full-300-query table reproducible |
 | **P7** ship | Dockerfiles, compose, prebaked index, README with a talk runbook; curated demo queries verified | `docker compose up` on a clean machine → working demo |
@@ -274,11 +274,23 @@ SciFact/NFCorpus; TREC-COVID's HNSW build will be the slow part.
 - **Scope:** build through **P4** (full retrieval pipeline, measured, plain UI), then review before
   investing in the insight panels (P5–P7).
 
+**Open decision (P5):** cross-encoder reranking measurably *hurts* on SciFact and no model or
+pool depth fixes it (`docs/reranker-findings.md`). Either keep it and teach the negative result —
+recommended, it is a better lesson than a stage that silently works — or add TREC-COVID, where
+reranking is known to pay for itself, at the cost of ~40 min one-time embedding for 171k docs.
+
 **Risks:**
 1. **Docker build unverified** on this box (no Docker, no passwordless sudo). P7 needs your machine.
 2. **Cross-encoder latency on CPU** ≈ 0.7–1.5 s for 50 docs × 512 tokens. Acceptable, and honestly
    a feature for the talk — but it means no snappy type-as-you-search on the rerank stage. Mitigate
    with a progressive response: stream stages 1–3 immediately, patch in stage 4 when it lands.
 3. **Torch on aarch64** — CPU wheels exist and work; just slower than x86 AVX. Pin versions.
-4. **Curated demo queries can rot** when parameters change. Add a test that asserts each demo
-   query still exhibits its advertised behavior, so a `k1` tweak can't silently break the talk.
+4. **Curated demo queries can rot** when parameters change. `scripts/find_demo_queries.py`
+   regenerates them against the live index; re-run it after touching the analyzer, the embedding
+   model or the RRF constant.
+5. **Abandoned requests are still computed in full** server-side and only fail at write time, so
+   a client that times out and retries costs the server twice. Measured: 180 aborted requests =
+   5 s of worker CPU. Knobs are now clamped (`rerank_n` ≤ 200, candidates ≤ 1000); don't let the
+   UI be hammered mid-talk.
+6. **One box cannot index, benchmark and demo at once.** The embedding sidecar is the shared
+   bottleneck; overlapping runs caused request timeouts that looked like a server hang.
