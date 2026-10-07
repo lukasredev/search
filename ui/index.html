@@ -98,6 +98,14 @@
   .hint { color:var(--dim); font-size:12.5px; margin-top:8px; }
   .picker { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:13px;
             color:var(--dim); margin-bottom:14px; }
+  .demos { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+  .demorow { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+  .demorow .cat { flex:0 0 118px; font-size:11px; text-transform:uppercase;
+                  letter-spacing:.06em; color:var(--dim); padding-top:7px; font-weight:600; }
+  .chip { background:#131620; border:1px solid var(--line); border-radius:999px;
+          padding:5px 12px; font-size:12.5px; cursor:pointer; color:var(--ink);
+          max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip:hover { border-color:var(--c, var(--accent)); color:var(--c, var(--accent)); }
   .picker select { flex:1; min-width:280px; padding:7px 9px; background:var(--panel);
             border:1px solid var(--line); border-radius:6px; color:var(--ink); font-size:13px; }
 </style>
@@ -115,6 +123,8 @@
            autocomplete="off" spellcheck="false">
     <button id="go">Search</button>
   </div>
+
+  <div id="demos"></div>
 
   <div class="picker">
     <label for="bq">Benchmark query</label>
@@ -150,12 +160,15 @@ const LABEL = { bm25:'1 · BM25', dense:'2 · Dense (HNSW)', rrf:'3 · RRF fusio
 let last = null;
 
 async function boot() {
+  let h = null;
   try {
-    const h = await (await fetch(API + '/api/health')).json();
+    h = await (await fetch(API + '/api/health')).json();
     const nlp = h.nlp?.ok ? 'nlp up' : 'nlp DOWN';
     $('hdr').textContent = `${h.dataset} · ${h.docs.toLocaleString()} docs · ${nlp}`;
     if (!h.nlp?.ok) note('NLP sidecar is unreachable — dense retrieval and reranking will be skipped.', true);
   } catch (e) { $('hdr').textContent = 'API unreachable'; }
+
+  loadDemos(h?.dataset);
 
   try {
     const q = await (await fetch(API + '/api/queries')).json();
@@ -168,6 +181,33 @@ async function boot() {
       $('q').value = pick.text; sel.value = pick.text; search();
     };
   } catch (e) { /* queries are optional */ }
+}
+
+const CAT = {
+  'lexical-win':  { label: 'lexical win',  color: 'var(--bm25)' },
+  'semantic-win': { label: 'semantic win', color: 'var(--dense)' },
+  'fusion-win':   { label: 'fusion win',   color: 'var(--rrf)' },
+};
+
+/* Curated examples produced by scripts/find_demo_queries.py — each one is a query that
+   demonstrates a specific thing, verified against the live index rather than guessed. */
+async function loadDemos(dataset) {
+  try {
+    const res = await fetch(`demo_queries_${dataset || 'scifact'}.json`);
+    if (!res.ok) return;
+    const d = await res.json();
+    const rows = Object.keys(CAT).filter(c => d[c]?.length).map(cat => {
+      const chips = d[cat].slice(0, 4).map(r =>
+        `<span class="chip" style="--c:${CAT[cat].color}" data-q="${esc(r.text)}"
+           title="${esc(r.teaches)}\n\nBM25 ${r.ndcg.bm25} · dense ${r.ndcg.dense} · RRF ${r.ndcg.rrf}"
+           >${esc(r.text)}</span>`).join('');
+      return `<div class="demorow"><span class="cat">${CAT[cat].label}</span>${chips}</div>`;
+    }).join('');
+    $('demos').innerHTML = `<div class="demos">${rows}</div>`;
+    document.querySelectorAll('.chip').forEach(el => el.onclick = () => {
+      $('q').value = el.dataset.q; search();
+    });
+  } catch (e) { /* curated examples are optional */ }
 }
 
 function note(text, isErr) {

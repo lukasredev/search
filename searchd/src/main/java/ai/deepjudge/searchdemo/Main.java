@@ -139,8 +139,7 @@ public final class Main {
     SearchPipeline.Request d = SearchPipeline.Request.of(q);
     return new SearchPipeline.Request(
         q,
-        SearchPipeline.Mode.valueOf(ctx.queryParamAsClass("mode", String.class)
-            .getOrDefault("hybrid").toUpperCase().replace("-", "_")),
+        mode(ctx.queryParamAsClass("mode", String.class).getOrDefault("hybrid")),
         !"off".equals(ctx.queryParam("trace")),
         ctx.queryParamAsClass("explain", Boolean.class).getOrDefault(d.explain()),
         ctx.queryParamAsClass("rerank", Boolean.class).getOrDefault(d.rerank()),
@@ -152,6 +151,15 @@ public final class Main {
         ctx.queryParamAsClass("rrf_k", Integer.class).getOrDefault(d.rrfK()),
         ctx.queryParamAsClass("fuse_n", Integer.class).getOrDefault(d.fuseN()),
         ctx.queryParamAsClass("rerank_n", Integer.class).getOrDefault(d.rerankN()));
+  }
+
+  private static SearchPipeline.Mode mode(String raw) {
+    try {
+      return SearchPipeline.Mode.valueOf(raw.toUpperCase().replace("-", "_"));
+    } catch (IllegalArgumentException e) {
+      throw new io.javalin.http.BadRequestResponse(
+          "unknown mode '" + raw + "'; expected hybrid, bm25_only or dense_only");
+    }
   }
 
   /** df, idf, total term frequency, and which documents contain the term. */

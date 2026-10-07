@@ -25,6 +25,17 @@ public final class SearchPipeline {
   /** Which retrieval paths to run. Useful for showing what fusion actually buys. */
   public enum Mode { HYBRID, BM25_ONLY, DENSE_ONLY }
 
+  /**
+   * Upper bounds on the knobs.
+   *
+   * <p>Not paranoia: an abandoned request is still computed to completion server-side and
+   * only fails when the response is written, so one client timing out and retrying costs
+   * the server the full price twice. Without a ceiling, a stray {@code rerank_n=5000}
+   * would occupy a worker for minutes. Clamping keeps the worst case bounded.
+   */
+  public static final int MAX_CANDIDATES = 1000;
+  public static final int MAX_RERANK = 200;
+
   /** Everything the UI can turn. Defaults are the ones the talk uses. */
   public record Request(
       String query,
@@ -40,6 +51,25 @@ public final class SearchPipeline {
       int rrfK,
       int fuseN,
       int rerankN) {
+
+    /** Clamps every knob into a sane range so a bad request cannot wedge a worker. */
+    public Request {
+      bm25N = clamp(bm25N, 1, MAX_CANDIDATES);
+      denseN = clamp(denseN, 1, MAX_CANDIDATES);
+      efSearch = clamp(efSearch, 1, MAX_CANDIDATES);
+      fuseN = clamp(fuseN, 1, MAX_CANDIDATES);
+      rerankN = clamp(rerankN, 0, MAX_RERANK);
+      rrfK = clamp(rrfK, 1, 10_000);
+      k1 = (float) clamp(k1, 0.0, 10.0);
+      b = (float) clamp(b, 0.0, 1.0);
+      if (rerankN == 0) rerank = false;
+    }
+
+    private static int clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    private static double clamp(double v, double lo, double hi) {
+      return Double.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : lo;
+    }
 
     public static Request of(String query) {
       return new Request(query, Mode.HYBRID, true, true, true,

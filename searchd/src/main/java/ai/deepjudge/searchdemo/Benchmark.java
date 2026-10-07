@@ -29,6 +29,7 @@ public final class Benchmark {
     String dataset = args.length > 0 ? args[0] : Config.dataset();
     int limit = args.length > 1 ? Integer.parseInt(args[1]) : Integer.MAX_VALUE;
     boolean rerank = args.length <= 2 || !"norerank".equals(args[2]);
+    int rerankN = args.length > 3 ? Integer.parseInt(args[3]) : 50;
 
     Path dataDir = Config.dataRoot().resolve(dataset);
     Path indexDir = Config.indexRoot().resolve(dataset);
@@ -39,10 +40,12 @@ public final class Benchmark {
       var pipeline = new SearchPipeline(searcher, new DemoAnalyzer(), ds,
           new NlpClient(Config.nlpUrl(), java.time.Duration.ofMinutes(5)));
 
-      Map<String, Object> report = run(pipeline, ds, limit, rerank);
+      Map<String, Object> report = run(pipeline, ds, limit, rerank, rerankN);
       System.out.println();
       print(report);
       Path out = indexDir.resolve("benchmark.json");
+      if (rerank && rerankN != 50) out = indexDir.resolve("benchmark-rerank" + rerankN + ".json");
+      if (!rerank) out = indexDir.resolve("benchmark-norerank.json");
       java.nio.file.Files.writeString(out, new com.fasterxml.jackson.databind.ObjectMapper()
           .writerWithDefaultPrettyPrinter().writeValueAsString(report));
       System.out.println("\nwrote " + out);
@@ -50,8 +53,8 @@ public final class Benchmark {
   }
 
   /** Averages each metric over every judged query, per stage. */
-  public static Map<String, Object> run(SearchPipeline pipeline, Dataset ds, int limit, boolean rerank)
-      throws IOException {
+  public static Map<String, Object> run(SearchPipeline pipeline, Dataset ds, int limit,
+                                        boolean rerank, int rerankN) throws IOException {
     // stage -> metric -> running sum
     Map<String, Map<String, Double>> sums = new LinkedHashMap<>();
     Map<String, Integer> counts = new LinkedHashMap<>();
@@ -68,7 +71,7 @@ public final class Benchmark {
           true,      // trace on, so we can read per-stage timings
           false,     // explain off: it is expensive and we only want metrics here
           rerank,
-          1.2f, 0.75f, 100, 100, 100, RrfFusion.DEFAULT_K, 50, 50);
+          1.2f, 0.75f, 100, 100, 100, RrfFusion.DEFAULT_K, 50, rerankN);
 
       Map<String, Object> res = pipeline.search(req);
 
@@ -89,12 +92,10 @@ public final class Benchmark {
         });
       }
 
-      @SuppressWarnings("unchecked")
-      List<Map<String, Object>> stages = (List<Map<String, Object>>) res.get("stages");
-      if (stages != null) {
+      // In-process these are still Trace.Stage records; only the HTTP layer turns
+      // them into JSON objects.
+      if (res.get("stages") instanceof List<?> stages) {
         for (Object s : stages) {
-          // stages serialize as Trace.Stage records when returned from the API, but
-          // in-process they are still records, so read through the accessor.
           Trace.Stage stage = (Trace.Stage) s;
           stageMs.merge(stage.name(), stage.ms(), Double::sum);
         }
@@ -121,12 +122,14 @@ public final class Benchmark {
         "dataset", ds.name(),
         "queries", queries.size(),
         "rerank", rerank,
+        "rerankN", rerankN,
         "totalSeconds", Trace.round((System.nanoTime() - t0) / 1e9),
         "perStage", perStage);
   }
 
   private static void print(Map<String, Object> report) {
-    System.out.printf("%s — %s queries%n", report.get("dataset"), report.get("queries"));
+    System.out.printf("%s — %s queries, rerankN=%s%n",
+        report.get("dataset"), report.get("queries"), report.get("rerankN"));
     System.out.printf("%-8s %9s %10s %11s %8s %9s%n",
         "stage", "nDCG@10", "recall@10", "recall@100", "MRR", "avg ms");
     System.out.println("-".repeat(60));
