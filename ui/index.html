@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lucene Pipeline Demo</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --line:#272b35; --ink:#e6e8ee; --dim:#8b93a7;
+    --accent:#6aa9ff; --gold:#e8b84b; --up:#4ec9a0; --down:#e06c75;
+    --bm25:#6aa9ff; --dense:#b98cff; --rrf:#4ec9a0; --rerank:#e8b84b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; }
+  code,.mono { font-family:ui-monospace,"SF Mono",Menlo,monospace; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex;
+           gap:16px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:.01em; }
+  .meta { color:var(--dim); font-size:13px; }
+  main { padding:20px; max-width:1800px; margin:0 auto; }
+
+  .searchbar { display:flex; gap:10px; margin-bottom:14px; }
+  input[type=text] { flex:1; padding:12px 14px; font-size:17px; background:var(--panel);
+                     border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  input[type=text]:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+  button { padding:12px 20px; font-size:15px; font-weight:600; background:var(--accent);
+           color:#0b0e14; border:0; border-radius:8px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line);
+                 font-weight:400; padding:6px 10px; font-size:13px; }
+
+  .knobs { display:flex; gap:18px; flex-wrap:wrap; align-items:center; padding:12px 14px;
+           background:var(--panel); border:1px solid var(--line); border-radius:8px;
+           margin-bottom:18px; font-size:13px; }
+  .knob { display:flex; gap:6px; align-items:center; color:var(--dim); }
+  .knob input, .knob select { width:72px; padding:4px 6px; background:#0f1115;
+           border:1px solid var(--line); border-radius:5px; color:var(--ink); font-size:13px; }
+  .knob select { width:auto; }
+  .knob b { color:var(--ink); font-weight:600; }
+
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+            padding:16px; margin-bottom:18px; }
+  section > h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+                 color:var(--dim); margin:0 0 12px; font-weight:600; }
+
+  /* timing waterfall */
+  .bar { display:grid; grid-template-columns:90px 1fr 90px; gap:10px; align-items:center;
+         margin-bottom:6px; font-size:13px; }
+  .bar .track { background:#0f1115; border-radius:4px; height:20px; overflow:hidden; }
+  .bar .fill { display:block; height:100%; border-radius:4px; min-width:2px; }
+  .bar .num { text-align:right; color:var(--dim); }
+
+  /* analyzer chain */
+  .chain { display:flex; flex-direction:column; gap:5px; }
+  .chainrow { display:grid; grid-template-columns:190px 1fr; gap:12px; align-items:baseline;
+              font-size:13px; }
+  .chainrow .f { color:var(--dim); }
+  .tok { display:inline-block; padding:1px 7px; margin:2px 3px 2px 0; border-radius:4px;
+         background:#20242e; border:1px solid var(--line); font-size:12.5px; }
+  .tok.gone { opacity:.3; text-decoration:line-through; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:right; padding:6px 10px; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--dim); font-weight:600; font-size:11.5px; text-transform:uppercase;
+       letter-spacing:.06em; }
+  td.best { color:var(--up); font-weight:600; }
+
+  /* stage columns */
+  .board { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
+  .col { min-width:0; }
+  .colhead { display:flex; justify-content:space-between; align-items:baseline;
+             padding:0 2px 8px; border-bottom:2px solid var(--c); margin-bottom:8px; }
+  .colhead .n { font-size:13px; font-weight:600; color:var(--c); }
+  .colhead .t { font-size:12px; color:var(--dim); }
+  .doc { background:#131620; border:1px solid var(--line); border-left:3px solid transparent;
+         border-radius:6px; padding:7px 9px; margin-bottom:6px; cursor:pointer; }
+  .doc:hover { border-color:var(--accent); }
+  .doc.rel { border-left-color:var(--gold); }
+  .doc .top { display:flex; justify-content:space-between; gap:8px; font-size:11.5px;
+              color:var(--dim); margin-bottom:3px; }
+  .doc .ttl { font-size:12.5px; line-height:1.35; overflow:hidden;
+              display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+  .doc .sc { color:var(--ink); }
+  .delta { font-weight:600; }
+  .delta.up { color:var(--up); } .delta.down { color:var(--down); }
+  .badge { font-size:10px; padding:0 4px; border-radius:3px; border:1px solid var(--line);
+           color:var(--dim); margin-left:4px; }
+
+  details { margin-top:10px; }
+  summary { cursor:pointer; color:var(--dim); font-size:13px; }
+  pre { background:#0b0e14; border:1px solid var(--line); border-radius:6px; padding:12px;
+        overflow:auto; font-size:12px; max-height:420px; }
+  .warn { background:#2b1f12; border:1px solid #5a3f1d; color:#e8b84b; padding:10px 12px;
+          border-radius:8px; font-size:13px; margin-bottom:14px; }
+  .err { background:#2b1416; border-color:#5a2227; color:#e06c75; }
+  .hint { color:var(--dim); font-size:12.5px; margin-top:8px; }
+  .picker { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:13px;
+            color:var(--dim); margin-bottom:14px; }
+  .picker select { flex:1; min-width:280px; padding:7px 9px; background:var(--panel);
+            border:1px solid var(--line); border-radius:6px; color:var(--ink); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lucene Pipeline Demo</h1>
+  <span class="meta" id="hdr">connecting…</span>
+  <span class="meta" style="margin-left:auto" id="wall"></span>
+</header>
+
+<main>
+  <div class="searchbar">
+    <input type="text" id="q" placeholder="Ask something — or pick a benchmark query below"
+           autocomplete="off" spellcheck="false">
+    <button id="go">Search</button>
+  </div>
+
+  <div class="picker">
+    <label for="bq">Benchmark query</label>
+    <select id="bq"><option value="">— loading —</option></select>
+    <button class="ghost" id="rand">Random</button>
+  </div>
+
+  <div class="knobs">
+    <span class="knob">mode
+      <select id="mode">
+        <option value="hybrid">hybrid</option>
+        <option value="bm25_only">bm25 only</option>
+        <option value="dense_only">dense only</option>
+      </select></span>
+    <span class="knob">BM25 <b>k1</b><input type="number" id="k1" value="1.2" step="0.1" min="0"></span>
+    <span class="knob"><b>b</b><input type="number" id="b" value="0.75" step="0.05" min="0" max="1"></span>
+    <span class="knob">RRF <b>k</b><input type="number" id="rrf_k" value="60" step="10" min="1"></span>
+    <span class="knob"><b>efSearch</b><input type="number" id="ef_search" value="100" step="10" min="10"></span>
+    <span class="knob">candidates <b>n</b><input type="number" id="n" value="100" step="10" min="10"></span>
+    <span class="knob">rerank <b>top</b><input type="number" id="rerank_n" value="50" step="10" min="0"></span>
+  </div>
+
+  <div id="msg"></div>
+  <div id="out"></div>
+</main>
+
+<script>
+const API = location.port === '5173' ? 'http://localhost:8080' : '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const COLORS = { bm25:'var(--bm25)', dense:'var(--dense)', rrf:'var(--rrf)', rerank:'var(--rerank)' };
+const LABEL = { bm25:'1 · BM25', dense:'2 · Dense (HNSW)', rrf:'3 · RRF fusion', rerank:'4 · Cross-encoder' };
+let last = null;
+
+async function boot() {
+  try {
+    const h = await (await fetch(API + '/api/health')).json();
+    const nlp = h.nlp?.ok ? 'nlp up' : 'nlp DOWN';
+    $('hdr').textContent = `${h.dataset} · ${h.docs.toLocaleString()} docs · ${nlp}`;
+    if (!h.nlp?.ok) note('NLP sidecar is unreachable — dense retrieval and reranking will be skipped.', true);
+  } catch (e) { $('hdr').textContent = 'API unreachable'; }
+
+  try {
+    const q = await (await fetch(API + '/api/queries')).json();
+    const sel = $('bq');
+    sel.innerHTML = '<option value="">— pick a judged query —</option>' +
+      q.queries.map(x => `<option value="${esc(x.text)}">${x.qid} · ${esc(x.text)} (${x.relevantDocs} relevant)</option>`).join('');
+    sel.onchange = () => { if (sel.value) { $('q').value = sel.value; search(); } };
+    $('rand').onclick = () => {
+      const pick = q.queries[Math.floor(Math.random() * q.queries.length)];
+      $('q').value = pick.text; sel.value = pick.text; search();
+    };
+  } catch (e) { /* queries are optional */ }
+}
+
+function note(text, isErr) {
+  $('msg').innerHTML = `<div class="warn${isErr ? ' err' : ''}">${esc(text)}</div>`;
+}
+
+async function search() {
+  const q = $('q').value.trim();
+  if (!q) return;
+  $('msg').innerHTML = ''; $('go').disabled = true; $('wall').textContent = 'searching…';
+
+  const n = $('n').value;
+  const params = new URLSearchParams({
+    q, mode: $('mode').value, k1: $('k1').value, b: $('b').value,
+    rrf_k: $('rrf_k').value, ef_search: $('ef_search').value,
+    bm25_n: n, dense_n: n, rerank_n: $('rerank_n').value,
+    rerank: $('rerank_n').value > 0
+  });
+
+  const t0 = performance.now();
+  try {
+    const res = await fetch(API + '/api/search?' + params);
+    if (!res.ok) throw new Error(await res.text());
+    last = await res.json();
+    $('wall').textContent = `${Math.round(performance.now() - t0)} ms round trip · ${last.totalMs} ms server`;
+    render(last);
+  } catch (e) {
+    note('Search failed: ' + e.message, true);
+    $('wall').textContent = '';
+  } finally { $('go').disabled = false; }
+}
+
+function render(d) {
+  const stages = Object.fromEntries(d.stages.map(s => [s.name, s]));
+  if (d.warnings) note(d.warnings.join(' · '));
+
+  $('out').innerHTML = [
+    timing(d.stages),
+    analyze(stages.analyze),
+    evalTable(d.eval),
+    board(d, stages),
+    raw(d)
+  ].join('');
+
+  document.querySelectorAll('.doc').forEach(el => {
+    el.onclick = () => showDoc(el.dataset.id, d, stages);
+  });
+}
+
+/* ---- timing waterfall ---- */
+function timing(stages) {
+  const max = Math.max(...stages.map(s => s.ms), 1);
+  const rows = stages.map(s => `
+    <div class="bar">
+      <span class="mono">${esc(s.name)}</span>
+      <span class="track"><span class="fill" style="width:${Math.max(100 * s.ms / max, 0.6)}%;
+            background:${COLORS[s.name] || 'var(--dim)'}"></span></span>
+      <span class="num mono">${s.ms} ms</span>
+    </div>`).join('');
+  const total = stages.reduce((a, s) => a + s.ms, 0);
+  return `<section><h2>Stage latency</h2>${rows}
+    <p class="hint">Sum of stages: ${total.toFixed(1)} ms. The cross-encoder dominates —
+    which is exactly why it only ever sees the few dozen candidates the earlier stages hand it.</p>
+    </section>`;
+}
+
+/* ---- analyzer chain ---- */
+function analyze(stage) {
+  if (!stage) return '';
+  const chain = stage.detail.chain, terms = stage.detail.terms;
+  const rows = chain.map((step, i) => {
+    const prev = i ? chain[i - 1].tokens : null;
+    const toks = step.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('');
+    const dropped = prev ? prev.filter(p => !step.tokens.includes(p) &&
+        !step.tokens.some(t => p.toLowerCase().startsWith(t.slice(0, Math.max(3, t.length - 2))))) : [];
+    const gone = dropped.map(t => `<span class="tok gone">${esc(t)}</span>`).join('');
+    return `<div class="chainrow"><span class="f mono">${esc(step.filter)}</span>
+            <span>${toks}${gone}</span></div>`;
+  }).join('');
+
+  const tbl = `<table><thead><tr><th>term</th><th>df</th><th>idf</th></tr></thead><tbody>
+    ${terms.map(t => `<tr><td class="mono">${esc(t.term)}</td><td>${t.df}</td><td>${t.idf}</td></tr>`).join('')}
+    </tbody></table>`;
+
+  return `<section><h2>Stage 0 — Analysis</h2>
+    <div class="chain">${rows}</div>
+    <p class="hint">The query goes through the same filter chain the documents did at index
+    time. A term that survives this chain is what actually gets looked up in the inverted index.</p>
+    <details open><summary>Term statistics</summary>${tbl}</details></section>`;
+}
+
+/* ---- per-stage metrics ---- */
+function evalTable(ev) {
+  if (!ev || !ev.judged) {
+    return `<section><h2>Evaluation</h2><p class="hint">${esc(ev?.note ||
+      'No relevance judgments for this query.')} Pick a benchmark query to see per-stage metrics.</p></section>`;
+  }
+  const metrics = ['ndcg@10', 'recall@10', 'recall@100', 'mrr'];
+  const stages = Object.keys(ev.perStage);
+  const best = {};
+  metrics.forEach(m => best[m] = Math.max(...stages.map(s => ev.perStage[s][m])));
+
+  return `<section><h2>Evaluation — query ${esc(ev.qid)}, ${ev.relevantTotal} relevant doc(s)</h2>
+    <table><thead><tr><th>after stage</th>${metrics.map(m => `<th>${m}</th>`).join('')}
+      <th>retrieved</th></tr></thead><tbody>
+    ${stages.map(s => `<tr><td class="mono">${esc(s)}</td>
+      ${metrics.map(m => `<td class="${ev.perStage[s][m] === best[m] && best[m] > 0 ? 'best' : ''}">${
+        ev.perStage[s][m].toFixed(3)}</td>`).join('')}
+      <td>${ev.perStage[s].retrieved}</td></tr>`).join('')}
+    </tbody></table>
+    <p class="hint">Same query, measured after each stage. This is the whole argument for the
+    pipeline in one table.</p></section>`;
+}
+
+/* ---- the four stage rankings ---- */
+function board(d, stages) {
+  const order = ['bm25', 'dense', 'rrf', 'rerank'].filter(n => stages[n]?.results?.length);
+  const cols = order.map(name => {
+    const s = stages[name];
+    const docs = s.results.slice(0, 12).map(r => docCard(r, d, name)).join('');
+    return `<div class="col" style="--c:${COLORS[name]}">
+      <div class="colhead"><span class="n">${LABEL[name]}</span>
+        <span class="t">${s.results.length} · ${s.ms}ms</span></div>
+      ${docs}</div>`;
+  }).join('');
+
+  const rrf = stages.rrf;
+  const overlapNote = rrf ? `<p class="hint">Of ${rrf.detail.uniqueDocs} distinct candidates,
+    only ${rrf.detail.overlap} were found by <em>both</em> retrievers — the rest is each retriever
+    covering for the other's blind spot. Gold left edge = judged relevant.</p>` : '';
+
+  return `<section><h2>Candidate flow — top 12 per stage</h2>
+    <div class="board">${cols}</div>${overlapNote}</section>`;
+}
+
+function docCard(r, d, stage) {
+  const meta = d.docs[r.docId] || {};
+  const rel = meta.relevance > 0 ? ' rel' : '';
+  let right = `<span class="sc mono">${fmtScore(r.score, stage)}</span>`;
+  if (stage === 'rerank' && r.delta !== 0) {
+    const dir = r.delta > 0 ? 'up' : 'down';
+    right += ` <span class="delta ${dir}">${r.delta > 0 ? '▲' : '▼'}${Math.abs(r.delta)}</span>`;
+  }
+  const badges = (stage === 'rrf' && r.foundBy?.length === 1)
+    ? `<span class="badge">${esc(r.foundBy[0])} only</span>` : '';
+  const trunc = (stage === 'rerank' && r.truncated) ? '<span class="badge">truncated</span>' : '';
+
+  return `<div class="doc${rel}" data-id="${esc(r.docId)}">
+    <div class="top"><span>#${r.rank} · ${esc(r.docId)}${badges}${trunc}</span>${right}</div>
+    <div class="ttl">${esc(meta.title || meta.snippet || '')}</div></div>`;
+}
+
+function fmtScore(v, stage) {
+  if (stage === 'rrf') return v.toFixed(5);
+  if (stage === 'dense') return v.toFixed(3);
+  return v.toFixed(2);
+}
+
+/* ---- per-doc drill-down ---- */
+function showDoc(docId, d, stages) {
+  const meta = d.docs[docId] || {};
+  const lines = [];
+
+  const bm = stages.bm25?.results.find(r => r.docId === docId);
+  if (bm?.explain) {
+    lines.push(`BM25 score ${bm.explain.total}  (k1=${bm.explain.k1}, b=${bm.explain.b})`);
+    lines.push('');
+    lines.push('term          contrib      tf     df      idf    dl   avgdl');
+    bm.explain.terms.forEach(t => lines.push(
+      `${String(t.term).padEnd(13)} ${String(t.contrib).padStart(7)} ${
+       String(t.tf ?? '-').padStart(7)} ${String(t.df ?? '-').padStart(6)} ${
+       String(t.idf ?? '-').padStart(8)} ${String(t.dl ?? '-').padStart(5)} ${
+       String(t.avgdl ?? '-').padStart(7)}`));
+    lines.push('');
+  }
+
+  const rrf = stages.rrf?.results.find(r => r.docId === docId);
+  if (rrf) lines.push(`RRF: ${rrf.formula}`, '');
+
+  const rr = stages.rerank?.results.find(r => r.docId === docId);
+  if (rr) lines.push(`Cross-encoder: ${rr.score}  (rank ${rr.prevRank} → ${rr.rank}, ${
+    rr.docTokens} doc tokens${rr.truncated ? ', TRUNCATED at 512' : ''})`, '');
+
+  const ranks = ['bm25', 'dense', 'rrf', 'rerank']
+    .map(n => { const r = stages[n]?.results.find(x => x.docId === docId);
+                return `${n}: ${r ? '#' + r.rank : '—'}`; }).join('   ');
+
+  $('msg').innerHTML = `<section>
+    <h2>${esc(docId)} ${meta.relevance > 0 ? '· judged relevant (grade ' + meta.relevance + ')' : ''}</h2>
+    <p style="margin:0 0 8px"><b>${esc(meta.title || '')}</b></p>
+    <p class="hint" style="margin-bottom:10px">${esc(ranks)}</p>
+    <pre>${esc(lines.join('\n') || 'no stage detail for this document')}</pre>
+    <details><summary>Snippet</summary><pre>${esc(meta.snippet || '')}</pre></details>
+    </section>`;
+  $('msg').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function raw(d) {
+  return `<section><h2>Raw response</h2>
+    <p class="hint">Every number above comes from this payload — the UI computes nothing of
+    its own. Same thing you get from <code>curl</code>.</p>
+    <details><summary>Show JSON (${(JSON.stringify(d).length / 1024).toFixed(0)} KB)</summary>
+    <pre>${esc(JSON.stringify(d, null, 2))}</pre></details></section>`;
+}
+
+$('go').onclick = search;
+$('q').onkeydown = e => { if (e.key === 'Enter') search(); };
+['mode','k1','b','rrf_k','ef_search','n','rerank_n'].forEach(id =>
+  $(id).onchange = () => { if (last) search(); });
+boot();
+</script>
+</body>
+</html>
