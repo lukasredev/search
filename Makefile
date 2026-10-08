@@ -7,6 +7,12 @@ JAVA_FLAGS := --add-modules jdk.incubator.vector --enable-native-access=ALL-UNNA
 # 522k Quora vectors are ~800 MB of float[] before they reach Lucene.
 INDEX_HEAP ?= -Xmx6g
 JAR        := searchd/target/searchd.jar
+# Long-running JVMs run from a snapshot of the jar, never the build output itself.
+# maven-shade replaces target/searchd.jar on every `make build`, and a JVM that then
+# needs a class it has not loaded yet dies with NoClassDefFoundError - which is how a
+# 20-minute index build was lost once. Rebuilding while something runs is normal during
+# a talk, so make it safe rather than a rule to remember.
+RUNJAR     := searchd/target/searchd-running.jar
 DATASET    ?= scifact
 export JAVA_HOME
 
@@ -43,22 +49,26 @@ nlp:
 	cd nlp && TORCH_THREADS=4 ./run.sh
 
 index: $(JAR)
-	cd searchd && $(JAVA) $(JAVA_FLAGS) $(INDEX_HEAP) -cp target/searchd.jar \
+	@cp -f $(JAR) $(RUNJAR)
+	cd searchd && $(JAVA) $(JAVA_FLAGS) $(INDEX_HEAP) -cp target/searchd-running.jar \
 	  ai.deepjudge.searchdemo.Indexer $(DATASET)
 
 # Same as index; the embedding cache in data/$(DATASET)/vectors.f32 makes it fast.
 reindex: index
 
 serve: $(JAR)
+	@cp -f $(JAR) $(RUNJAR)
 	cd searchd && DATASET=$(DATASET) UI_DIR=$(CURDIR)/ui $(JAVA) $(JAVA_FLAGS) \
-	  -cp target/searchd.jar ai.deepjudge.searchdemo.Main
+	  -cp target/searchd-running.jar ai.deepjudge.searchdemo.Main
 
 bench: $(JAR)
-	cd searchd && $(JAVA) $(JAVA_FLAGS) -cp target/searchd.jar \
+	@cp -f $(JAR) $(RUNJAR)
+	cd searchd && $(JAVA) $(JAVA_FLAGS) -cp target/searchd-running.jar \
 	  ai.deepjudge.searchdemo.Benchmark $(DATASET) 99999 rerank
 
 bench-fast: $(JAR)
-	cd searchd && $(JAVA) $(JAVA_FLAGS) -cp target/searchd.jar \
+	@cp -f $(JAR) $(RUNJAR)
+	cd searchd && $(JAVA) $(JAVA_FLAGS) -cp target/searchd-running.jar \
 	  ai.deepjudge.searchdemo.Benchmark $(DATASET) 99999 norerank
 
 demos: ## regenerate the curated example queries (needs serve running)

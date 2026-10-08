@@ -14,23 +14,25 @@ analyze ─┬─ BM25 top-100  (inverted index) ─┐
          └─ dense top-100 (HNSW graph)      ─┘
 ```
 
-## The pitch, in three numbers
+## The pitch, in one table
 
-Measured on BEIR SciFact, 5,183 documents, 300 judged queries (`make bench`):
+nDCG@10 after each stage, measured with `make bench`, against published BEIR baselines:
 
-| after stage | nDCG@10 | recall@100 | avg latency |
-|---|---|---|---|
-| BM25 | 0.683 | 0.928 | 0.4 ms |
-| dense | 0.645 | 0.925 | 15 ms |
-| RRF fusion | **0.720** | **0.941** | 0.2 ms |
-| + cross-encoder rerank | 0.693 | 0.941 | 3113 ms |
+| | BM25 | dense | RRF fusion | + reranker |
+|---|---|---|---|---|
+| **SciFact** — 5k biomedical claims | **0.683** | 0.645 | **0.720** | 0.693 |
+| **NFCorpus** — 3.6k nutrition abstracts | **0.339** | 0.312 | **0.350** | — |
+| **Quora** — 523k duplicate questions | 0.778 | **0.839** | **0.839** | 0.796 |
 
-Neither retriever is better than the other — they are wrong about *different* documents, and
-fusing them beats both. That is the whole argument for a hybrid pipeline, in one table.
+Read it across, not down. **Which retriever wins depends entirely on the data.** SciFact is
+full of exact technical terms, so matching words beats matching meaning. Quora is people asking
+the same question in different words, so matching meaning wins by six points and fusion adds
+nothing on top of it. Anyone who tells you one retrieval method is simply better has not run
+both on their own data.
 
-And then the fourth row refuses to cooperate: the cross-encoder costs 3 seconds a query and
-makes the ranking *worse*. That is not a bug — it reproduces across four reranker models and
-three pool depths, and it matches the published BEIR figures. See
+And the last column refuses to cooperate anywhere: the cross-encoder makes the ranking *worse*
+on every dataset here. That is not a bug — it reproduces across four reranker models and three
+pool depths and matches the published figures. See
 [docs/reranker-findings.md](docs/reranker-findings.md); it is the most interesting slide in the
 deck, not the broken one.
 
@@ -49,7 +51,17 @@ Then open <http://localhost:8080>. `make index` caches its embeddings in
 `data/<dataset>/vectors.f32`, so re-indexing after an analyzer or HNSW change takes seconds,
 not minutes.
 
-Switch corpora with `DATASET=nfcorpus make index serve`.
+Switch corpora with `DATASET=quora make index serve`. Quora is the one to use for a computer
+science audience — the queries are real programming questions, and duplicate-question retrieval
+makes the vocabulary-mismatch argument on its own:
+
+> *"Which server-side scripting language should we use in web development today?"*
+> and *"Which languages can be used for server-side web development aside from PHP?"*
+> share 19% of their words and mean the same thing.
+
+It is 523k documents, so budget ~25 minutes for the one-time embedding pass (cached afterwards).
+
+To run it on a server, see [docs/deploy.md](docs/deploy.md).
 
 ## What to show during the talk
 

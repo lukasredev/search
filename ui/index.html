@@ -65,6 +65,8 @@ main { padding:26px var(--pad) 90px; max-width:1860px; margin:0 auto; }
 
 .grid2 { display:grid; grid-template-columns:minmax(0,420px) minmax(0,1fr); gap:16px;
          align-items:start; }
+.grid2 > :first-child { position:sticky; top:72px; }
+@media (max-height:720px) { .grid2 > :first-child { position:static; } }
 @media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } }
 
 /* ── controls ── */
@@ -166,7 +168,8 @@ textarea { width:100%; min-height:168px; padding:13px; background:var(--ink);
 .kv b { font-family:var(--mono); font-weight:500; }
 .keys { position:fixed; right:14px; bottom:12px; font-size:12px; color:var(--mute);
         background:var(--slab); border:1px solid var(--rule); border-radius:3px;
-        padding:5px 11px; font-family:var(--mono); }
+        padding:5px 11px; font-family:var(--mono); opacity:.55; pointer-events:none; }
+.keys:hover { opacity:1; }
 </style>
 </head>
 <body>
@@ -386,10 +389,16 @@ function statsPanel() {
   const parts = Object.entries(s.bytesByComponent).filter(([,b]) => b > 1000)
     .sort((a,b) => b[1] - a[1]);
   const max = parts[0][1];
+  const hnsw = s.bytesByComponent['hnsw vectors'];
+  const inv = s.bytesByComponent['inverted index'];
+  const ratio = hnsw && inv
+    ? `Storing meaning costs <b>${(hnsw/inv).toFixed(0)}&times;</b> what storing words does:
+       ${(hnsw/1e6).toFixed(0)} MB of vectors against ${(inv/1e6).toFixed(1)} MB of postings.`
+    : 'The word index is the cheap half.';
   return `<div class="panel">
     <h2>What the finished index costs</h2>
     <p class="sub">${s.docs.toLocaleString()} documents and ${s.uniqueTerms.toLocaleString()}
-      distinct terms, on disk. The word index is the cheap half.</p>
+      distinct terms, on disk. ${ratio}</p>
     ${parts.map(([k,b]) => `<div class="bar">
       <span>${esc(k)}</span>
       <span class="track"><span class="fill" style="width:${100*b/max}%;background:${

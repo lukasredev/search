@@ -72,6 +72,28 @@ because the queries are short and natural-language — much closer to the rerank
 distribution. Cost: 171k documents, roughly 40 minutes of one-time embedding on this box and a
 ~250 MB HNSW graph. The loader needs no code change, only a fetch script entry.
 
+## It is not SciFact either
+
+Quora looked like the dataset that would rescue the stage: short natural-language questions,
+much closer to the MS MARCO distribution the cross-encoder was trained on. It does not.
+
+| after stage | nDCG@10 | per query |
+|---|---|---|
+| BM25 | 0.778 | 0.7 ms |
+| dense | 0.839 | 12.7 ms |
+| RRF fusion | **0.839** | 0.1 ms |
+| + cross-encoder | 0.796 | 136 ms |
+
+1,000 queries. Same shape as SciFact: about four points given back. The domain-shift
+explanation was therefore at best half the story — the part that holds everywhere is the
+second one. When the first stage already puts a relevant document in the top ten more than
+90% of the time, a merely-good reranker has far more opportunities to demote a right answer
+than to promote one.
+
+Reranking is cheap here (136 ms, not 3 seconds) because Quora documents are one line long, so
+the stage is worth leaving switched on for the demo: it is the clearest place to show rank
+deltas, and being able to say "this cost us four points" is the lesson.
+
 ## Reproducing
 
 ```bash
