@@ -115,7 +115,13 @@ main { padding:26px var(--pad) 90px; max-width:1860px; margin:0 auto; }
 .chip { background:var(--slab); border:1px solid var(--rule); border-radius:3px;
         padding:5px 12px; font-size:14px; cursor:pointer; max-width:430px;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.chip:hover { border-color:var(--c,var(--paper)); color:var(--c,var(--paper)); }
+.chip:hover { border-color:var(--paper); }
+/* the four that build on each other, numbered so they read as one thread */
+.chip.pinned { border-color:var(--accent); }
+.chip.pinned i { display:inline-block; font-style:normal; font-family:var(--mono);
+                 font-size:11px; color:#FBFAF6; background:var(--accent); border-radius:50%;
+                 width:17px; height:17px; line-height:17px; text-align:center;
+                 margin-right:8px; vertical-align:1px; }
 
 /* ── latency ── */
 .bar { display:grid; grid-template-columns:104px 1fr 92px; gap:12px; align-items:center;
@@ -626,16 +632,24 @@ function knobsHtml(c) {
 function drawExamples() {
   const d = state.demos;
   if (!d) return;
-  const CAT = { 'lexical-win':['words win','var(--paper)'], 'semantic-win':['meaning wins','var(--paper)'],
-                'fusion-win':['fusion wins','var(--paper)'] };
-  // Early chapters only show the contrast they can actually explain.
-  const show = state.ch <= 1 ? ['lexical-win']
-             : state.ch === 2 ? ['lexical-win','semantic-win'] : Object.keys(CAT);
+  const CAT = {
+    'lexical-win':  'words win',
+    'semantic-win': 'meaning wins',
+    'fusion-win':   'fusion wins',
+    'rerank-win':   'reading wins',
+  };
+  // A row appears only once its chapter has introduced the stage it is about, so the
+  // four pinned queries arrive one per chapter, each failing at the stage before it.
+  const upto = { 1:1, 2:2, 3:3, 4:4, 5:4 }[state.ch] || 1;
+  const show = Object.keys(CAT).slice(0, upto);
+
   $('examples').innerHTML = show.filter(k => d[k]?.length).map(k => `
-    <div class="exrow"><span class="cat">${CAT[k][0]}</span>
-      ${d[k].slice(0,3).map(r => `<span class="chip" style="--c:${CAT[k][1]}"
-        data-q="${esc(r.text)}" title="${esc(r.teaches)}">${esc(r.text)}</span>`).join('')}
+    <div class="exrow"><span class="cat">${CAT[k]}</span>
+      ${d[k].slice(0, 3).map(r => `<span class="chip${r.ladder ? ' pinned' : ''}"
+        data-q="${esc(r.text)}" title="${esc(r.teaches || '')}"
+        >${r.ladder ? `<i>${r.ladder}</i>` : ''}${esc(r.text)}</span>`).join('')}
     </div>`).join('');
+
   document.querySelectorAll('.chip').forEach(el => el.onclick = () => {
     state.q = el.dataset.q; $('q').value = state.q; search();
   });

@@ -122,6 +122,26 @@ def main():
     dest = ROOT / "data" / "index" / args.dataset / "demo_queries.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     out["topic"] = args.topic
+
+    # Pinned entries are hand-picked so the four build on each other, which is an
+    # editorial decision no metric reproduces. Carry them (and any reranking category,
+    # which this script does not measure) across a regeneration.
+    if dest.exists():
+        previous = json.loads(dest.read_text())
+        out["note"] = previous.get("note", "")
+        for category, rows in previous.items():
+            if not isinstance(rows, list):
+                continue
+            pinned = [r for r in rows if r.get("ladder")]
+            if category not in out:
+                out[category] = rows            # e.g. rerank-win, not measured here
+            elif pinned:
+                keep = [r for r in out[category]
+                        if r["text"] not in {p["text"] for p in pinned}]
+                out[category] = pinned + keep
+        if any(r.get("ladder") for rows in previous.values()
+               if isinstance(rows, list) for r in rows):
+            print("kept the pinned ladder queries")
     dest.write_text(json.dumps(out, indent=2))
     print(f"\nwrote {dest}")
     for cat in ("lexical-win", "semantic-win", "fusion-win"):
