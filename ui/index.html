@@ -110,7 +110,7 @@ main { padding:26px var(--pad) 90px; max-width:1860px; margin:0 auto; }
 .bar .num { text-align:right; color:var(--mute); }
 
 /* ── analyzer chain ── */
-.chainrow { display:grid; grid-template-columns:184px 1fr; gap:14px; align-items:baseline;
+.chainrow { display:grid; grid-template-columns:232px 1fr; gap:14px; align-items:baseline;
             padding:4px 0; border-top:1px solid var(--rule); }
 .chainrow:first-child { border-top:0; }
 .chainrow .f { color:var(--mute); font-size:13.5px; }
@@ -410,14 +410,7 @@ async function runPreview() {
 
 function drawPreview(p) {
   const s = p.summary;
-  const chain = p.analyzer.chain.map((step,i) => {
-    const prev = i ? p.analyzer.chain[i-1].tokens : null;
-    const toks = step.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('');
-    const gone = prev ? prev.filter(x => !step.tokens.includes(x) && !stemmedFrom(x, step.tokens))
-      .map(t => `<span class="tok gone">${esc(t)}</span>`).join('') : '';
-    return `<div class="chainrow"><span class="f mono">${esc(step.filter)}</span>
-            <span>${toks}${gone}</span></div>`;
-  }).join('');
+  const chain = chainRows(p.analyzer.chain, false);
 
   const rows = p.postings.slice(0, 18).map(t => `<tr>
       <td class="mono">${esc(t.term)}${t.df === 0 ? '<span class="tag">new term</span>' : ''}</td>
@@ -448,11 +441,15 @@ function drawPreview(p) {
     <div class="panel">
       <h2>1 &nbsp;Split it into terms</h2>
       ${chain}
-      <p class="note">Only what survives all five filters is searchable. That is why
-        “deficiencies” and “deficiency” end up as the same entry.</p>
+      <p class="note">Only what survives every step is searchable. That is why “deficiencies” and
+        “deficiency” end up as the same entry.</p>
     </div>
     <div class="panel">
-      <h2>2 &nbsp;Write it into the postings</h2>
+      <h2>2 &nbsp;Add it to the inverted index</h2>
+      <p class="sub">Every row below is one <b>posting</b>: this term, in this document,
+        this many times, at these positions. Collect the postings for a term across the
+        whole collection and you have its <b>posting list</b> — which is what a search
+        for that term actually fetches.</p>
       <div class="figs" style="margin-bottom:14px">${
         p.postings.length ? figIdf(p.postings.slice(0,12), s.docsInIndex) : ''}</div>
       <div class="scroll"><table>
@@ -472,6 +469,32 @@ function drawPreview(p) {
       <p class="sub">${v?.dim ?? 384} numbers — one bar each, height for size, colour for sign.</p>
       ${vecHtml}
     </div>`;
+}
+
+/* Lucene's class names are library trivia; what a step *does* is the lesson. The real
+   names stay available under "every filter, step by step" for anyone mapping this to code. */
+const FILTER_LABEL = {
+  StandardTokenizer:       'split on spaces and punctuation',
+  EnglishPossessiveFilter: 'strip possessives',
+  LowerCaseFilter:         'lowercase',
+  StopFilter:              'drop very common words',
+  PorterStemFilter:        'reduce to word stems',
+};
+
+/* Steps that changed nothing are hidden: EnglishPossessiveFilter is a no-op on almost
+   every input, and an identical repeated row makes the process look longer than it is. */
+function chainRows(chain, showAll) {
+  return chain.map((step, i) => {
+    const prev = i ? chain[i-1].tokens : null;
+    const changed = !prev || step.tokens.join('\u0000') !== prev.join('\u0000');
+    if (!changed && !showAll) return '';
+    const label = showAll ? step.filter : (FILTER_LABEL[step.filter] || step.filter);
+    const toks = step.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('');
+    const gone = prev ? prev.filter(x => !step.tokens.includes(x) && !stemmedFrom(x, step.tokens))
+      .map(t => `<span class="tok gone">${esc(t)}</span>`).join('') : '';
+    return `<div class="chainrow"><span class="f${showAll ? ' mono' : ''}">${esc(label)}</span>
+            <span>${toks}${gone}</span></div>`;
+  }).join('');
 }
 
 function stemmedFrom(word, tokens) {
@@ -638,11 +661,8 @@ function analysisPanel(stage, c) {
       </tbody></table></div>
     <div class="figs" style="margin-top:14px">${
       terms.length ? figIdf(terms, state.health?.docs || 1) : ''}</div>
-    <details style="margin-top:10px"><summary>Every filter, step by step</summary>
-      <div style="margin-top:8px">${stage.detail.chain.map(s =>
-        `<div class="chainrow"><span class="f mono">${esc(s.filter)}</span>
-         <span>${s.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('')}</span></div>`
-      ).join('')}</div></details>
+    <details style="margin-top:10px"><summary>Every step, with its Lucene class name</summary>
+      <div style="margin-top:8px">${chainRows(stage.detail.chain, true)}</div></details>
   </div>`;
 }
 
@@ -885,7 +905,7 @@ function pipeSearch(lit) {
     ${wire('M596 95h46', lit.length>0, 'var(--mute)')}
     ${node(46, 95, 'g-query', 'your words', true, 'var(--paper)')}
     ${node(146, 95, 'g-tokenize', 'terms', true, 'var(--paper)')}
-    ${node(256, 38, 'g-postings', 'postings', on('bm25'), H.bm25)}
+    ${node(256, 38, 'g-postings', 'inverted index', on('bm25'), H.bm25)}
     ${node(358, 38, 'g-ranked', 'BM25 ranks', on('bm25'), H.bm25)}
     ${node(256, 152, 'g-vector', 'embedding', on('dense'), H.dense)}
     ${node(358, 152, 'g-graph', 'nearest vectors', on('dense'), H.dense)}
@@ -909,7 +929,7 @@ function pipeIndex() {
     ${node(46, 95, 'g-doc', 'one document', true, P)}
     ${node(146, 95, 'g-tokenize', 'split', true, P)}
     ${node(246, 95, 'g-filter', 'filter', true, P)}
-    ${node(356, 38, 'g-postings', 'postings', true, HUE.bm25)}
+    ${node(356, 38, 'g-postings', 'inverted index', true, HUE.bm25)}
     ${node(356, 152, 'g-vector', '384 numbers', true, HUE.dense)}
     ${node(466, 95, 'g-index', 'the index', true, P)}
   </svg>`;
