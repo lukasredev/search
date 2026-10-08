@@ -56,9 +56,8 @@ button,input,textarea,select { font:inherit; color:inherit; }
 main { padding:26px var(--pad) 90px; max-width:1860px; margin:0 auto; }
 
 /* ── chapter heading ── */
-.lede { margin-bottom:22px; max-width:68ch; }
-.lede h1 { font-size:31px; line-height:1.18; margin-bottom:7px; }
-.lede p { margin:0; color:var(--mute); font-size:17px; line-height:1.5; }
+.lede { margin-bottom:12px; max-width:68ch; }
+.lede h1 { font-size:31px; line-height:1.18; }
 
 /* ── panels ── */
 .panel { background:var(--slab); border:1px solid var(--rule); border-radius:4px;
@@ -158,6 +157,32 @@ td.best { color:var(--fuse); font-weight:600; }
 .vec i { flex:1 1 0; min-width:0; display:block; border-radius:1px; }
 
 .note { color:var(--mute); font-size:13.5px; margin-top:11px; max-width:80ch; }
+
+/* ── the shared visual vocabulary ──────────────────────────────────────── */
+.sprite { position:absolute; width:0; height:0; overflow:hidden; }
+.pipe { width:100%; max-width:860px; margin:0 0 22px; display:block; }
+.pipe text { font-family:var(--sans); fill:var(--mute); font-size:12px; }
+.pipe .lbl-on { fill:var(--paper); font-weight:600; }
+.pipe .wire { stroke:var(--rule); stroke-width:1.6; fill:none; }
+.pipe .wire-on { stroke:var(--c); stroke-width:2.2; }
+
+/* small explainer diagrams, always the same shape and size */
+.figs { display:flex; gap:14px; flex-wrap:wrap; }
+.fig { background:var(--ink); border:1px solid var(--rule); border-radius:4px;
+       padding:12px 14px 10px; flex:0 1 340px; min-width:260px; max-width:420px; }
+.fig.wide { flex:0 1 480px; max-width:560px; }
+.fig h3 { font-size:14px; margin:0 0 2px; }
+.fig .formula { font-family:var(--mono); font-size:11.5px; color:var(--mute);
+                margin:0 0 9px; line-height:1.45; }
+.fig svg { width:100%; height:auto; display:block; }
+.fig .cap { font-size:12.5px; color:var(--mute); margin:8px 0 0; }
+.fig .cap b { color:var(--paper); font-family:var(--mono); font-weight:500; }
+.fig .axis { stroke:var(--rule); stroke-width:1.2; fill:none; }
+.fig .curve { fill:none; stroke:var(--c,var(--lex)); stroke-width:2.2; }
+.fig .tick { font-family:var(--mono); font-size:10.5px; fill:var(--mute); }
+.fig .mark { fill:var(--c,var(--lex)); }
+.fig .marklbl { font-family:var(--mono); font-size:11px; fill:var(--paper); }
+.fig .ghost { fill:none; stroke:var(--rule); stroke-width:1.6; stroke-dasharray:3 3; }
 .banner { background:var(--slab2); border:1px solid var(--rule); border-left:3px solid var(--rank);
           padding:11px 15px; border-radius:3px; font-size:14.5px; margin-bottom:16px; }
 .banner.bad { border-left-color:#C0392B; }
@@ -179,10 +204,87 @@ textarea { width:100%; min-height:168px; padding:13px; background:var(--ink);
 </head>
 <body>
 
+<!-- One definition per building block. Every diagram in the app references these, so a
+     tokenizer always looks like a tokenizer. -->
+<svg class="sprite" aria-hidden="true"><defs>
+  <symbol id="g-doc" viewBox="0 0 32 32">
+    <rect x="7" y="4" width="18" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M11 11h10M11 16h10M11 21h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="g-query" viewBox="0 0 32 32">
+    <circle cx="14" cy="14" r="8" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M20 20l6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="g-tokenize" viewBox="0 0 32 32">
+    <rect x="4" y="6" width="24" height="6" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M12 14v3M20 14v3" stroke="currentColor" stroke-width="1.4"/>
+    <rect x="4" y="19" width="6" height="7" rx="1.5" fill="currentColor"/>
+    <rect x="13" y="19" width="6" height="7" rx="1.5" fill="currentColor"/>
+    <rect x="22" y="19" width="6" height="7" rx="1.5" fill="currentColor"/>
+  </symbol>
+  <symbol id="g-filter" viewBox="0 0 32 32">
+    <path d="M4 6h24L19 17.5V27l-6-3.5v-6z" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="g-term" viewBox="0 0 32 32">
+    <rect x="3" y="7" width="26" height="7" rx="3.5" fill="currentColor" opacity=".28"/>
+    <rect x="3" y="7" width="26" height="7" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="3" y="18" width="17" height="7" rx="3.5" fill="currentColor" opacity=".28"/>
+    <rect x="3" y="18" width="17" height="7" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="g-postings" viewBox="0 0 48 32">
+    <rect x="1" y="5" width="14" height="8" rx="4" fill="currentColor" opacity=".3"/>
+    <path d="M17 9h4" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="23" y="5" width="7" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="32" y="5" width="7" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="41" y="5" width="7" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="1" y="19" width="14" height="8" rx="4" fill="currentColor" opacity=".3"/>
+    <path d="M17 23h4" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="23" y="19" width="7" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <rect x="32" y="19" width="7" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="g-vector" viewBox="0 0 32 32">
+    <circle cx="6" cy="26" r="2.2" fill="currentColor"/>
+    <path d="M6 26L25 8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+    <path d="M25 8l-7 1.4M25 8l-1.4 7" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="g-graph" viewBox="0 0 32 32">
+    <path d="M8 9l12-3 6 8-10 10-10-5z M8 9l8 15M20 6l-4 18M8 9l18 5" stroke="currentColor"
+          stroke-width="1.2" fill="none" opacity=".5"/>
+    <circle cx="8" cy="9" r="2.7" fill="currentColor"/><circle cx="20" cy="6" r="2.7" fill="currentColor"/>
+    <circle cx="26" cy="14" r="2.7" fill="currentColor"/><circle cx="16" cy="24" r="2.7" fill="currentColor"/>
+    <circle cx="6" cy="19" r="2.7" fill="currentColor"/>
+  </symbol>
+  <symbol id="g-ranked" viewBox="0 0 32 32">
+    <rect x="5" y="6" width="22" height="5" rx="2.5" fill="currentColor"/>
+    <rect x="5" y="13.5" width="16" height="5" rx="2.5" fill="currentColor" opacity=".65"/>
+    <rect x="5" y="21" width="11" height="5" rx="2.5" fill="currentColor" opacity=".4"/>
+  </symbol>
+  <symbol id="g-merge" viewBox="0 0 32 32">
+    <path d="M4 8h10q7 0 7 8h7" class="nofill" fill="none" stroke="currentColor" stroke-width="1.9"/>
+    <path d="M4 24h10q7 0 7-8" fill="none" stroke="currentColor" stroke-width="1.9"/>
+    <path d="M28 16l-6-3.5M28 16l-6 3.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="g-cross" viewBox="0 0 32 32">
+    <rect x="3" y="4" width="12" height="6" rx="3" fill="currentColor" opacity=".35"/>
+    <rect x="17" y="4" width="12" height="6" rx="3" fill="currentColor" opacity=".75"/>
+    <path d="M9 10v3M23 10v3" stroke="currentColor" stroke-width="1.4"/>
+    <rect x="5" y="13" width="22" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M16 23v4" stroke="currentColor" stroke-width="1.8"/>
+    <circle cx="16" cy="29" r="2.2" fill="currentColor"/>
+  </symbol>
+  <symbol id="g-index" viewBox="0 0 32 32">
+    <path d="M16 3l13 6.5-13 6.5L3 9.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    <path d="M3 16l13 6.5L29 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    <path d="M3 22.5L16 29l13-6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+  </symbol>
+</defs></svg>
+
 <nav class="rail" id="rail"></nav>
 
 <main>
-  <div class="lede"><h1 id="chTitle"></h1><p id="chThesis"></p></div>
+  <div class="lede"><h1 id="chTitle"></h1></div>
+  <div id="chThesis"></div>
   <div id="msg"></div>
   <div id="stage"></div>
 </main>
@@ -202,35 +304,28 @@ const TITLE = { bm25:'BM25', dense:'Dense', rrf:'RRF fusion', rerank:'Cross-enco
 const CHAPTERS = [
   { id:'index', name:'Indexing', hue:'var(--mute)',
     title:'How one document gets into the index',
-    thesis:'Before anything can be found it has to be stored twice — once as words, once as '
-         + 'numbers. Paste any text below and watch both happen.' },
+    pipe:() => pipeIndex() },
   { id:'lexical', name:'Matching words', hue:'var(--lex)',
     title:'Looking the words up',
-    thesis:'The query goes through the same filters the documents did. Whatever survives is '
-         + 'looked up in the inverted index, and BM25 ranks what comes back.',
+    pipe:() => pipeSearch(['bm25']),
     req:{ mode:'bm25_only', rerank:false }, cols:['bm25'], knobs:['k1','b','n'] },
   { id:'semantic', name:'Matching meaning', hue:'var(--sem)',
     title:'Words are not meanings',
-    thesis:'Ask the same thing in different words and BM25 has nothing to match. A second '
-         + 'index stores each document as a point in space, and we look for near ones.',
+    pipe:() => pipeSearch(['bm25','dense']),
     req:{ mode:'hybrid', rerank:false }, cols:['bm25','dense'], knobs:['k1','b','n','ef_search'] },
   { id:'fusion', name:'Combining', hue:'var(--fuse)',
     title:'Two rankings, one answer',
-    thesis:'BM25 scores and cosine similarities are not comparable numbers. Ranks are. '
-         + 'Reciprocal rank fusion adds up 1/(k+rank) and needs nothing else.',
+    pipe:() => pipeSearch(['bm25','dense','rrf']),
     req:{ mode:'hybrid', rerank:false }, cols:['bm25','dense','rrf'],
     knobs:['k1','b','n','ef_search','rrf_k'] },
   { id:'rerank', name:'Reading closely', hue:'var(--rank)',
     title:'Reading costs more than matching',
-    thesis:'A cross-encoder reads the query and document together instead of comparing two '
-         + 'vectors. It is better and it is thousands of times slower, so it only ever sees '
-         + 'the few dozen candidates the earlier stages hand it.',
+    pipe:() => pipeSearch(['bm25','dense','rrf','rerank']),
     req:{ mode:'hybrid', rerank:true }, cols:['bm25','dense','rrf','rerank'],
     knobs:['k1','b','n','ef_search','rrf_k','rerank_n'] },
   { id:'evidence', name:'Was it worth it?', hue:'var(--paper)',
-    title:'Measuring whether each stage earned its place',
-    thesis:'Every stage is a hypothesis. These are real relevance judgments, so we can score '
-         + 'the ranking after each one and find out which stages actually helped.',
+    title:'Did each stage earn its place?',
+    pipe:() => pipeSearch(['bm25','dense','rrf','rerank']),
     req:{ mode:'hybrid', rerank:true }, cols:['bm25','dense','rrf','rerank'],
     knobs:['k1','b','n','ef_search','rrf_k','rerank_n'] },
 ];
@@ -268,7 +363,7 @@ function go(i) {
   drawRail();
   const c = CHAPTERS[state.ch];
   $('chTitle').textContent = c.title;
-  $('chThesis').textContent = c.thesis;
+  $('chThesis').innerHTML = c.pipe();
   $('msg').innerHTML = '';
   render();
   if (state.ch > 0 && state.q) search();
@@ -346,23 +441,20 @@ function drawPreview(p) {
       <div><span>size</span><b>${v.bytes} bytes</b></div>
       <div><span>computed in</span><b>${v.ms} ms</b></div>
     </div>
-    <p class="note">Every document in the index is one of these. Searching by meaning means
-      finding the ones whose arrows point the same way as the query's — which is why the
-      length is always 1: only direction carries meaning.</p>`
+    <p class="note">Every document in the index is one of these.</p>`
     : `<p class="sub">The embedding model is not reachable, so only the word half ran.</p>`;
 
   $('idxOut').innerHTML = `
     <div class="panel">
       <h2>1 &nbsp;Split it into terms</h2>
-      <p class="sub">Each filter rewrites the token stream. Only what survives all five is
-        ever searchable — which is why a search for “deficiencies” finds “deficiency”.</p>
       ${chain}
+      <p class="note">Only what survives all five filters is searchable. That is why
+        “deficiencies” and “deficiency” end up as the same entry.</p>
     </div>
     <div class="panel">
       <h2>2 &nbsp;Write it into the postings</h2>
-      <p class="sub">One row per distinct term. Each one appends this document to that term's
-        posting list, with the positions it appeared at. <b>df</b> is how many documents
-        already contain the term — the whole basis of BM25's idea that rare words matter more.</p>
+      <div class="figs" style="margin-bottom:14px">${
+        p.postings.length ? figIdf(p.postings.slice(0,12), s.docsInIndex) : ''}</div>
       <div class="scroll"><table>
         <thead><tr><th>term</th><th>times here</th><th>at positions</th>
           <th>documents already</th><th>idf</th></tr></thead>
@@ -377,9 +469,7 @@ function drawPreview(p) {
     </div>
     <div class="panel">
       <h2>3 &nbsp;Turn it into a point in space</h2>
-      <p class="sub">The same text, read by a neural network and squeezed into
-        ${v?.dim ?? 384} numbers — one bar each, height for size and colour for sign. No single
-        bar means anything on its own; only the whole pattern does.</p>
+      <p class="sub">${v?.dim ?? 384} numbers — one bar each, height for size, colour for sign.</p>
       ${vecHtml}
     </div>`;
 }
@@ -518,6 +608,8 @@ function drawResults() {
   const cols = c.cols.filter(n => st[n]?.results?.length);
 
   const blocks = [analysisPanel(st.analyze, c)];
+  if (c.cols.includes('bm25')) blocks.push(bm25Panel());
+  if (state.ch >= 4) blocks.push(encoderPanel());
   if (state.ch >= 4) blocks.push(latencyPanel(d.stages));
   if (state.ch === 5) blocks.push(evalPanel(d.eval));
   blocks.push(boardPanel(cols, st, d, c));
@@ -538,19 +630,40 @@ function analysisPanel(stage, c) {
   const last = stage.detail.chain[stage.detail.chain.length - 1];
   return `<div class="panel">
     <h2>What the engine actually searched for</h2>
-    <p class="sub">Your words after the same five filters every document went through.
-      Rare terms (high idf) do most of the work in BM25.</p>
-    <div>${last.tokens.map((t,i) => `<span class="tok">${esc(t)}</span>`).join('')}</div>
+    <div>${last.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('')}</div>
     <div class="scroll" style="margin-top:13px"><table>
       <thead><tr><th>term</th><th>documents containing it</th><th>idf</th></tr></thead>
       <tbody>${terms.map(t => `<tr><td class="mono">${esc(t.term)}</td>
         <td class="mono">${t.df.toLocaleString()}</td><td class="mono">${t.idf}</td></tr>`).join('')}
       </tbody></table></div>
+    <div class="figs" style="margin-top:14px">${
+      terms.length ? figIdf(terms, state.health?.docs || 1) : ''}</div>
     <details style="margin-top:10px"><summary>Every filter, step by step</summary>
       <div style="margin-top:8px">${stage.detail.chain.map(s =>
         `<div class="chainrow"><span class="f mono">${esc(s.filter)}</span>
          <span>${s.tokens.map(t => `<span class="tok">${esc(t)}</span>`).join('')}</span></div>`
       ).join('')}</div></details>
+  </div>`;
+}
+
+/* The three things BM25 multiplies together, each as its own small picture. */
+function bm25Panel() {
+  return `<div class="panel">
+    <h2>How BM25 turns those statistics into one number</h2>
+    <p class="sub">A document's score is the sum, over the query's terms, of three factors.</p>
+    <div class="figs">
+      ${figSaturation(Number(state.knob.k1))}
+      ${figLength(Number(state.knob.b))}
+    </div>
+    <p class="note">Rarity &times; how often the term appears here &divide; how long the
+      document is. Change <b>k1</b> or <b>b</b> above to move these curves.</p>
+  </div>`;
+}
+
+function encoderPanel() {
+  return `<div class="panel">
+    <h2>Why this stage cannot be precomputed</h2>
+    <div class="figs">${figEncoders()}</div>
   </div>`;
 }
 
@@ -560,16 +673,17 @@ function latencyPanel(stages) {
   const slowest = stages.reduce((a,s) => s.ms > a.ms ? s : a);
   return `<div class="panel">
     <h2>Where the time went</h2>
-    <p class="sub">${total.toFixed(0)} ms in total, and ${
+    <p class="sub">${total.toFixed(0)} ms in total, ${
       (100*slowest.ms/total).toFixed(0)}% of it in <b>${esc(slowest.name)}</b>.</p>
     ${stages.map(s => `<div class="bar">
       <span class="mono">${esc(s.name)}</span>
       <span class="track"><span class="fill" style="width:${Math.max(100*s.ms/max,0.4)}%;
         background:${HUE[s.name] || 'var(--rule)'}"></span></span>
       <span class="num mono">${s.ms} ms</span></div>`).join('')}
-    ${state.ch >= 4 ? `<p class="note">The cross-encoder is roughly a thousand times slower
-      per document than BM25. Scoring the whole collection with it would take minutes, which
-      is the entire reason the earlier stages exist.</p>` : ''}
+    ${state.ch >= 4 ? `<p class="note">Scoring all ${
+      (state.health?.docs || 0).toLocaleString()} documents this way would take
+      ${fmtDuration((state.health?.docs||0) * (stages.find(s=>s.name==='rerank')?.ms||0) /
+        Math.max(1,(state.last?.params?.rerankN||50)))}.</p>` : ''}
   </div>`;
 }
 
@@ -582,14 +696,12 @@ function boardPanel(cols, st, d, c) {
         <span class="t">${s.ms} ms</span></div>${docs}</div>`;
   }).join('');
   const only = st.rrf ? `<p class="note">Of ${st.rrf.detail.uniqueDocs} documents found in
-    total, only ${st.rrf.detail.overlap} were found by <em>both</em> retrievers. The rest is
-    each one covering for the other's blind spot.</p>` : '';
+    total, only ${st.rrf.detail.overlap} were found by <em>both</em> retrievers.</p>` : '';
   const relNote = d.eval?.judged
-    ? `<p class="note">Documents marked ✓ are the ones human judges called relevant for this
-       query. Watch them climb as stages are added.</p>` : '';
+    ? `<p class="note">✓ marks the documents human judges called relevant.</p>` : '';
   return `<div class="panel">
     <h2>${cols.length === 1 ? 'What came back' : 'The same query, ranked ' + cols.length + ' ways'}</h2>
-    <p class="sub">Top 12 of each. Click any document to see why it scored what it did.</p>
+    <p class="sub">Top 12. Click one to see its score broken down.</p>
     <div class="board" style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))">${body}</div>
     ${only}${relNote}</div>`;
 }
@@ -616,8 +728,7 @@ function densePanel(dense, bm25) {
   const onlyDense = dense.results.filter(r => !lex.has(r.docId)).length;
   return `<div class="panel">
     <h2>How the vector index found them</h2>
-    <p class="sub">It did not read every document. The vectors are wired into a graph, and
-      the search walks it greedily towards the query.</p>
+    <div class="figs" style="margin-bottom:14px">${figCosine(dense.results[0]?.score ?? 0.8)}</div>
     <div class="kv">
       <div><span>vectors visited</span><b>${dd.visitedCount.toLocaleString()}${
         state.health ? ' of ' + state.health.docs.toLocaleString() : ''}</b></div>
@@ -625,12 +736,13 @@ function densePanel(dense, bm25) {
       <div><span>embedding the query</span><b>${dd.embedMs} ms</b></div>
       <div><span>walking the graph</span><b>${dd.graphMs} ms</b></div>
     </div>
-    <p class="note">${onlyDense} of these ${dense.results.length} documents were invisible to
-      BM25 — no shared term with the query at all. That gap is what the second index is for.</p>
+    <p class="note">${onlyDense} of these ${dense.results.length} documents share no term with
+      the query at all, so BM25 could never have found them.</p>
   </div>`;
 }
 
 function rrfPanel(rrf, d) {
+  const top = rrf.results[0];
   const rows = rrf.results.slice(0, 8).map(r => `<tr>
       <td class="mono">${r.rank}</td>
       <td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
@@ -640,8 +752,9 @@ function rrfPanel(rrf, d) {
       <td class="mono" style="color:var(--mute);text-align:left">${esc(r.formula)}</td></tr>`).join('');
   return `<div class="panel">
     <h2>The arithmetic, in full</h2>
-    <p class="sub">No score normalisation anywhere. Each list contributes 1/(k+rank), and a
-      document that both retrievers liked a bit beats one that only one of them loved.</p>
+    <div class="figs" style="margin-bottom:14px">${figRrf(rrf.params.k, [
+      { rank: top?.contrib?.bm25?.rank, hue: HUE.bm25 },
+      { rank: top?.contrib?.dense?.rank, hue: HUE.dense }])}</div>
     <div class="scroll"><table>
       <thead><tr><th>#</th><th>document</th><th>BM25 rank</th><th>dense rank</th>
         <th style="text-align:left">fused score</th></tr></thead>
@@ -661,7 +774,8 @@ function evalPanel(ev) {
   return `<div class="panel">
     <h2>Scoring this query after every stage</h2>
     <p class="sub">${ev.relevantTotal} document${ev.relevantTotal===1?' was':'s were'} judged
-      relevant. nDCG@10 rewards putting them near the top.</p>
+      relevant for this query.</p>
+    <div class="figs" style="margin-bottom:16px">${figNdcg(relevantPositions())}</div>
     <table><thead><tr><th>after</th>${metrics.map(m=>`<th>${names[m]}</th>`).join('')}</tr></thead>
     <tbody>${stages.map(s => `<tr><td style="color:${HUE[s]}">${esc(TITLE[s]||s)}</td>
       ${metrics.map(m => `<td class="mono ${ev.perStage[s][m]===best[m]&&best[m]>0?'best':''}">${
@@ -682,8 +796,7 @@ function benchPanel() {
     <td class="mono">${m.avgMs} ms</td></tr>`).join('');
   return `<div class="panel">
     <h2>Every judged query in the collection</h2>
-    <p class="sub">${b.queries.toLocaleString()} queries, averaged. This is the honest version
-      of the table above.</p>
+    <p class="sub">${b.queries.toLocaleString()} queries, averaged.</p>
     <table><thead><tr><th>after</th><th>nDCG@10</th><th>recall@100</th><th>MRR</th>
       <th>per query</th></tr></thead><tbody>${rows}</tbody></table>
   </div>`;
@@ -736,12 +849,271 @@ function showDoc(docId, d, st) {
 function rawPanel(d) {
   return `<div class="panel">
     <h2>Everything above came from one HTTP response</h2>
-    <p class="sub">This page computes nothing of its own. Open the network tab and you will
-      find exactly these numbers.</p>
+    <p class="sub">This page computes nothing of its own.</p>
     <details><summary>Show the JSON (${(JSON.stringify(d).length/1024).toFixed(0)} KB)</summary>
       <pre style="margin-top:9px">${esc(JSON.stringify(d, null, 2))}</pre></details>
   </div>`;
 }
+
+
+/* ══ shared diagrams ════════════════════════════════════════════════════ */
+/* Every chapter shows the same pipeline with different parts lit, so the shape
+   of the system is learned once and then only referred back to. */
+function node(cx, cy, glyph, label, on, hue) {
+  return `<g style="color:${on ? hue : 'var(--rule)'}" opacity="${on ? 1 : .4}">
+    <use href="#${glyph}" x="${cx-18}" y="${cy-18}" width="36" height="36"/>
+    <text x="${cx}" y="${cy+31}" text-anchor="middle" class="${on?'lbl-on':''}">${label}</text></g>`;
+}
+function wire(d, on, hue) {
+  return `<path d="${d}" class="wire ${on?'wire-on':''}" ${on?`style="--c:${hue}"`:''}/>`;
+}
+
+/* query -> [words | meaning] -> fuse -> rerank -> answer */
+function pipeSearch(lit) {
+  const on = n => lit.includes(n);
+  const H = HUE;
+  return `<svg class="pipe" viewBox="0 0 740 196" role="img"
+    aria-label="Search pipeline: query, tokenize, then lexical and semantic retrieval, fused, reranked">
+    ${wire('M70 95h54', true, 'var(--mute)')}
+    ${wire('M170 95h26q12 0 12-12V50q0-12 12-12h14', on('bm25'), H.bm25)}
+    ${wire('M170 95h26q12 0 12 12v45q0 12 12 12h14', on('dense'), H.dense)}
+    ${wire('M282 38h46', on('bm25'), H.bm25)}
+    ${wire('M282 152h46', on('dense'), H.dense)}
+    ${wire('M384 38h26q12 0 12 12v33q0 12 12 12h8', on('rrf'), H.rrf)}
+    ${wire('M384 152h26q12 0 12-12v-33q0-12 12-12h8', on('rrf'), H.rrf)}
+    ${wire('M494 95h46', on('rerank'), H.rerank)}
+    ${wire('M596 95h46', lit.length>0, 'var(--mute)')}
+    ${node(46, 95, 'g-query', 'your words', true, 'var(--paper)')}
+    ${node(146, 95, 'g-tokenize', 'terms', true, 'var(--paper)')}
+    ${node(256, 38, 'g-postings', 'postings', on('bm25'), H.bm25)}
+    ${node(358, 38, 'g-ranked', 'BM25 ranks', on('bm25'), H.bm25)}
+    ${node(256, 152, 'g-vector', 'embedding', on('dense'), H.dense)}
+    ${node(358, 152, 'g-graph', 'nearest vectors', on('dense'), H.dense)}
+    ${node(466, 95, 'g-merge', 'fuse', on('rrf'), H.rrf)}
+    ${node(568, 95, 'g-cross', 'read closely', on('rerank'), H.rerank)}
+    ${node(668, 95, 'g-ranked', 'answer', lit.length>0, 'var(--paper)')}
+  </svg>`;
+}
+
+/* document -> terms -> [postings | vector] -> index */
+function pipeIndex() {
+  const P='var(--paper)';
+  return `<svg class="pipe" viewBox="0 0 740 196" role="img"
+    aria-label="Indexing: a document is tokenized, filtered, then written as postings and as a vector">
+    ${wire('M70 95h54', true, 'var(--mute)')}
+    ${wire('M170 95h54', true, 'var(--mute)')}
+    ${wire('M270 95h26q12 0 12-12V50q0-12 12-12h14', true, HUE.bm25)}
+    ${wire('M270 95h26q12 0 12 12v45q0 12 12 12h14', true, HUE.dense)}
+    ${wire('M382 38h26q12 0 12 12v33q0 12 12 12h8', true, HUE.bm25)}
+    ${wire('M382 152h26q12 0 12-12v-33q0-12 12-12h8', true, HUE.dense)}
+    ${node(46, 95, 'g-doc', 'one document', true, P)}
+    ${node(146, 95, 'g-tokenize', 'split', true, P)}
+    ${node(246, 95, 'g-filter', 'filter', true, P)}
+    ${node(356, 38, 'g-postings', 'postings', true, HUE.bm25)}
+    ${node(356, 152, 'g-vector', '384 numbers', true, HUE.dense)}
+    ${node(466, 95, 'g-index', 'the index', true, P)}
+  </svg>`;
+}
+
+/* ══ explainer figures ══════════════════════════════════════════════════
+   Each one is drawn from the live numbers on screen, so it explains this query
+   rather than a textbook example. Same size, same axes treatment, every time. */
+const W = 300, H = 132, L = 36, R = 10, T = 12, B = 26;
+const px = t => L + t * (W - L - R);
+const py = t => T + (1 - t) * (H - T - B);
+const path = pts => pts.map((p,i) => (i?'L':'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+const axes = () => `<path class="axis" d="M${L} ${T}V${H-B}H${W-R}"/>`;
+
+function figShell(hue, title, formula, body, cap, wide, vb) {
+  return `<div class="fig${wide?' wide':''}" style="--c:${hue}">
+    <h3>${title}</h3><p class="formula">${formula}</p>
+    <svg viewBox="${vb || `0 0 ${W} ${H}`}">${body}</svg>
+    <p class="cap">${cap}</p></div>`;
+}
+
+/* Why a word in 3 documents counts for more than a word in 200,000. */
+function figIdf(terms, numDocs) {
+  const idf = df => Math.log(1 + (numDocs - df + 0.5) / (df + 0.5));
+  const maxIdf = idf(1), lg = Math.log10(numDocs);
+  const X = df => px(Math.log10(Math.max(df,1)) / lg);
+  const Y = v => py(v / maxIdf);
+  const curve = [];
+  for (let i = 0; i <= 60; i++) {
+    const df = Math.pow(10, (i/60) * lg);
+    curve.push([X(df), Y(idf(df))]);
+  }
+  const shown = [...terms].sort((a,b) => a.df - b.df);
+  const dots = shown.map((t,i) => {
+    const x = X(t.df), y = Y(t.idf);
+    const show = i === 0 || i === shown.length - 1;
+    return `<circle class="mark" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.6"/>` +
+      (show ? `<text class="marklbl" x="${Math.min(x+6, W-R-58).toFixed(1)}"
+         y="${(y + (i===0?-7:14)).toFixed(1)}">${esc(t.term)}</text>` : '');
+  }).join('');
+  const rare = shown[0], common = shown[shown.length-1];
+  return figShell(HUE.bm25, 'Rare words count for more',
+    'log(1 + (N &minus; df) / df)&nbsp;&nbsp;roughly',
+    `${axes()}<path class="curve" d="${path(curve)}"/>${dots}
+     <text class="tick" x="${L}" y="${H-10}">in 1 doc</text>
+     <text class="tick" x="${W-R}" y="${H-10}" text-anchor="end">in all ${fmtK(numDocs)}</text>
+     <text class="tick" x="4" y="${T+8}">high</text><text class="tick" x="4" y="${H-B}">low</text>`,
+    `<b>${esc(rare.term)}</b> appears in ${fmtK(rare.df)} documents and counts
+     ${(rare.idf/Math.max(common.idf,0.01)).toFixed(0)}&times; as much as
+     <b>${esc(common.term)}</b>, which is in ${fmtK(common.df)}.`);
+}
+
+/* Why the tenth occurrence of a word barely helps. */
+function figSaturation(k1) {
+  const f = tf => tf / (tf + k1);
+  const curve = [];
+  for (let tf = 0; tf <= 12; tf += 0.25) curve.push([px(tf/12), py(f(tf))]);
+  const linear = [[px(0), py(0)], [px(12/12), py(1.35)]];
+  return figShell(HUE.bm25, 'More mentions stop helping',
+    `tf / (tf + k1)&nbsp;&nbsp;k1 = ${k1}`,
+    `${axes()}<path class="ghost" d="${path(linear)}"/>
+     <path class="curve" d="${path(curve)}"/>
+     <circle class="mark" cx="${px(1/12)}" cy="${py(f(1))}" r="3.4"/>
+     <circle class="mark" cx="${px(10/12)}" cy="${py(f(10))}" r="3.4"/>
+     <text class="tick" x="${L}" y="${H-10}">0</text>
+     <text class="tick" x="${W-R}" y="${H-10}" text-anchor="end">12 mentions</text>`,
+    `Going from 1 mention to 2 adds <b>${((f(2)-f(1))*100).toFixed(0)}%</b>.
+     Going from 10 to 11 adds <b>${((f(11)-f(10))*100).toFixed(0)}%</b>.
+     The dashed line is what plain counting would do.`);
+}
+
+/* Why a long document does not win just by being long. */
+function figLength(b) {
+  const f = r => 1 / (1 - b + b * r);
+  const curve = [];
+  for (let r = 0.25; r <= 3; r += 0.05) curve.push([px((r-0.25)/2.75), py(f(r)/1.6)]);
+  return figShell(HUE.bm25, 'Length is divided out',
+    `&divide; (1 &minus; b + b &times; len/avg)&nbsp;&nbsp;b = ${b}`,
+    `${axes()}<path class="curve" d="${path(curve)}"/>
+     <path class="ghost" d="${path([[px((1-0.25)/2.75), T],[px((1-0.25)/2.75), H-B]])}"/>
+     <text class="tick" x="${px((1-0.25)/2.75)+4}" y="${T+10}">average</text>
+     <text class="tick" x="${L}" y="${H-10}">short</text>
+     <text class="tick" x="${W-R}" y="${H-10}" text-anchor="end">3&times; average</text>`,
+    `A document twice the average length has its scores cut to
+     <b>${(f(2)/f(1)*100).toFixed(0)}%</b>. Without this, long documents would win
+     every query by mentioning everything.`);
+}
+
+/* What a cosine score actually measures. */
+function figCosine(score) {
+  const th = Math.acos(Math.max(-1, Math.min(1, score)));
+  const ox = 60, oy = H - B - 6, len = 78;
+  const ax = ox + len, ay = oy;
+  const bx = ox + len * Math.cos(th), by = oy - len * Math.sin(th);
+  const arc = `M${ox+26} ${oy} A26 26 0 0 0 ${ox+26*Math.cos(th)} ${oy-26*Math.sin(th)}`;
+  return figShell(HUE.dense, 'Similar means pointing the same way',
+    'score = cos(angle between the two arrows)',
+    `<path d="M${ox} ${oy}L${ax} ${ay}" stroke="var(--mute)" stroke-width="2.2" stroke-linecap="round"/>
+     <path d="M${ox} ${oy}L${bx.toFixed(1)} ${by.toFixed(1)}" stroke="var(--c)" stroke-width="2.6" stroke-linecap="round"/>
+     <path d="${arc}" fill="none" stroke="var(--rule)" stroke-width="1.4"/>
+     <circle cx="${ox}" cy="${oy}" r="3" fill="var(--paper)"/>
+     <text class="tick" x="${ax+6}" y="${ay+4}">your words</text>
+     <text class="tick" x="${(bx+8).toFixed(1)}" y="${(by-2).toFixed(1)}">a document</text>
+     <text class="marklbl" x="${ox+32}" y="${oy-10}">${(th*180/Math.PI).toFixed(0)}&deg;</text>`,
+    `Direction is all that counts, not length. This document scores
+     <b>${score.toFixed(3)}</b> &mdash; ${(th*180/Math.PI).toFixed(0)}&deg; away from the query.`);
+}
+
+/* Why fusion can use ranks and ignore scores entirely. */
+function figRrf(k, marks) {
+  const f = r => 1 / (k + r);
+  const curve = [];
+  for (let r = 1; r <= 60; r++) curve.push([px((r-1)/59), py(f(r)/f(1))]);
+  const dots = marks.filter(m => m.rank).map(m =>
+    `<circle cx="${px(Math.min(m.rank,60)/59)}" cy="${py(f(m.rank)/f(1))}" r="3.8"
+       fill="${m.hue}"/><text class="marklbl" x="${px(Math.min(m.rank,60)/59)+6}"
+       y="${py(f(m.rank)/f(1))-5}" fill="${m.hue}">#${m.rank}</text>`).join('');
+  return figShell(HUE.rrf, 'Only the position matters',
+    `1 / (k + rank)&nbsp;&nbsp;k = ${k}`,
+    `${axes()}<path class="curve" d="${path(curve)}"/>${dots}
+     <text class="tick" x="${L}" y="${H-10}">1st</text>
+     <text class="tick" x="${W-R}" y="${H-10}" text-anchor="end">60th</text>`,
+    `A score of 8.8 and a score of 0.94 cannot be added together. Positions can.
+     Being 2nd on both lists beats being 1st on one and nowhere on the other.`);
+}
+
+/* Why one of these can be precomputed and the other cannot. */
+function figEncoders() {
+  const chip = (x,y,w,lbl) => `<rect x="${x}" y="${y}" width="${w}" height="15" rx="7.5"
+      fill="var(--rule)"/><text class="tick" x="${x+w/2}" y="${y+10.5}"
+      text-anchor="middle">${lbl}</text>`;
+  const box = (x,y,w,lbl,hue) => `<rect x="${x}" y="${y}" width="${w}" height="22" rx="3"
+      fill="none" stroke="${hue}" stroke-width="1.8"/>
+      <text class="tick" x="${x+w/2}" y="${y+14.5}" text-anchor="middle" fill="${hue}">${lbl}</text>`;
+  const M = 'var(--mute)', C = 'var(--c)';
+  return figShell(HUE.rerank, 'Two ways to compare two texts',
+    'one can be done in advance, the other cannot',
+    `<text class="tick" x="6" y="11" fill="${M}">bi-encoder &mdash; retrieval</text>
+     ${chip(6,20,64,'query')}${chip(78,20,78,'document')}
+     <path d="M38 35v9M117 35v9" stroke="${M}" stroke-width="1.4"/>
+     ${box(6,44,64,'model',M)}${box(78,44,78,'model',M)}
+     <path d="M38 66v9M117 66v9" stroke="${M}" stroke-width="1.4"/>
+     ${chip(6,75,64,'vector')}${chip(78,75,78,'vector')}
+     <path d="M38 90v10h79V90" fill="none" stroke="${M}" stroke-width="1.4"/>
+     <text class="tick" x="77" y="116" text-anchor="middle" fill="${M}">compare the two</text>
+
+     <path d="M196 6v126" stroke="var(--rule)" stroke-width="1"/>
+     <text class="tick" x="212" y="11" fill="${C}">cross-encoder &mdash; rerank</text>
+     ${chip(212,20,64,'query')}${chip(284,20,78,'document')}
+     <path d="M244 35v9M323 35v9" stroke="${C}" stroke-width="1.4"/>
+     ${box(212,44,150,'one model, both texts',C)}
+     <path d="M287 66v16" fill="none" stroke="${C}" stroke-width="1.4"/>
+     <text class="tick" x="287" y="94" text-anchor="middle" fill="${C}">one relevance score</text>`,
+    `The left half embeds every document once, in advance, and only the query is new at
+     search time. The right half has to run the model again for every query&ndash;document
+     pair, so it only ever sees a shortlist.`, true, '0 0 380 134');
+}
+
+/* What the evaluation number is actually counting. */
+function figNdcg(hits) {
+  const bars = [];
+  for (let i = 1; i <= 10; i++) {
+    const w = 1 / Math.log2(i + 1);
+    const bw = (W - L - R) / 10 - 4;
+    const x = L + (i-1) * ((W - L - R) / 10) + 2;
+    const h = (H - T - B) * w;
+    bars.push(`<rect x="${x.toFixed(1)}" y="${(H-B-h).toFixed(1)}" width="${bw.toFixed(1)}"
+      height="${h.toFixed(1)}" rx="1.5" fill="${hits.includes(i)?'var(--c)':'var(--rule)'}"/>`);
+  }
+  return figShell(HUE.rrf, 'Being right near the top counts more',
+    'each position is worth 1 / log2(position + 1)',
+    `${bars.join('')}<path class="axis" d="M${L} ${H-B}H${W-R}"/>
+     <text class="tick" x="${L}" y="${H-10}">1st</text>
+     <text class="tick" x="${W-R}" y="${H-10}" text-anchor="end">10th</text>`,
+    !hits.length
+      ? `Nothing relevant in the top ten here, so this query scores 0.`
+      : hits[0] === 1
+        ? `The relevant document is already first, which is the most any ranking can score.`
+        : `Moving the relevant document from ${hits[0]} to 1st would be worth
+           <b>${(100/(1/Math.log2(hits[0]+1)) - 100).toFixed(0)}%</b> more.`);
+}
+
+/* Where the relevant documents ended up in the ranking the last stage produced. */
+function relevantPositions() {
+  const d = state.last;
+  if (!d) return [];
+  const order = ['rerank','rrf','dense','bm25'];
+  const stage = d.stages.find(x => order.includes(x.name) &&
+    x.name === order.find(n => d.stages.some(y => y.name === n)));
+  if (!stage) return [];
+  return stage.results.map((r,i) => d.docs[r.docId]?.relevance > 0 ? i + 1 : 0)
+    .filter(i => i > 0 && i <= 10);
+}
+
+function fmtDuration(ms) {
+  if (ms < 1000) return `${ms.toFixed(0)} ms`;
+  if (ms < 90_000) return `${(ms/1000).toFixed(0)} seconds`;
+  if (ms < 5_400_000) return `${(ms/60_000).toFixed(0)} minutes`;
+  if (ms < 172_800_000) return `${(ms/3_600_000).toFixed(1)} hours`;
+  return `${(ms/86_400_000).toFixed(1)} days`;
+}
+
+const fmtK = n => n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+
 
 function render() { state.ch === 0 ? renderIndexing() : renderSearch(); }
 
@@ -774,6 +1146,12 @@ async function boot() {
 const DEFAULT_DOC = "Reciprocal rank fusion combines several ranked lists without needing "
   + "their scores to be comparable. Each list contributes one over k plus the rank, and the "
   + "sums decide the final ordering.";
+
+/* Deep links: each chapter has a URL, so a slide can point straight at one. */
+addEventListener('hashchange', () => {
+  const i = CHAPTERS.findIndex(c => c.id === location.hash.slice(1));
+  if (i >= 0 && i !== state.ch) go(i);
+});
 
 addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
