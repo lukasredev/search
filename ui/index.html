@@ -15,14 +15,18 @@
              font-weight:500; font-display:swap; }
 
 :root {
-  --ink:#0E1420; --slab:#151C2A; --slab2:#1C2537; --rule:#273349;
-  --paper:#E9EDF6; --mute:#909CB4;
-  --lex:#5B9CFF; --sem:#C07BFF; --fuse:#3FD3A3; --rank:#FFB454;
+  /* Paper, deliberately cool rather than cream. The four stage hues are darkened
+     versions of the dark-mode set: every one clears 4.5:1 against both the page and
+     the panels, so a stage colour can carry text, not just decoration. */
+  --ink:#F6F7F9; --slab:#FFFFFF; --slab2:#EDF0F5; --rule:#CBD4E0;
+  --paper:#121A26; --mute:#5B6778;
+  --lex:#1B5FD9; --sem:#7A3DC4; --fuse:#0B7A5B; --rank:#99590A;
   --sans:Plex,ui-sans-serif,system-ui,sans-serif;
   --mono:PlexMono,ui-monospace,Menlo,monospace;
   --pad:22px;
 }
 * { box-sizing:border-box; }
+html { color-scheme:light; }
 html,body { background:var(--ink); color:var(--paper); margin:0; }
 body { font:400 16px/1.55 var(--sans); -webkit-font-smoothing:antialiased; }
 .mono { font-family:var(--mono); font-feature-settings:"tnum" 1; }
@@ -74,7 +78,7 @@ main { padding:26px var(--pad) 90px; max-width:1860px; margin:0 auto; }
 .ask input { flex:1; padding:14px 16px; font-size:19px; background:var(--slab);
              border:1px solid var(--rule); border-radius:4px; }
 .ask input::placeholder { color:var(--mute); }
-.btn { padding:0 22px; font-size:16px; font-weight:600; background:var(--lex); color:#06101F;
+.btn { padding:0 22px; font-size:16px; font-weight:600; background:var(--lex); color:#fff;
        border:0; border-radius:4px; cursor:pointer; }
 .btn:disabled { opacity:.45; cursor:default; }
 .btn.quiet { background:transparent; color:var(--mute); border:1px solid var(--rule);
@@ -136,6 +140,7 @@ td.best { color:var(--fuse); font-weight:600; }
        border-radius:3px; padding:8px 11px; margin-bottom:7px; cursor:pointer; }
 .doc:hover { border-color:var(--c); }
 .doc.rel { background:var(--slab2); border-left-color:var(--paper); }
+.doc.rel .ttl { font-weight:600; }
 .doc .top { display:flex; justify-content:space-between; gap:9px; font-size:12.5px;
             color:var(--mute); margin-bottom:3px; font-family:var(--mono); }
 .doc .ttl { font-size:14px; line-height:1.38; overflow:hidden; display:-webkit-box;
@@ -155,7 +160,7 @@ td.best { color:var(--fuse); font-weight:600; }
 .note { color:var(--mute); font-size:13.5px; margin-top:11px; max-width:80ch; }
 .banner { background:var(--slab2); border:1px solid var(--rule); border-left:3px solid var(--rank);
           padding:11px 15px; border-radius:3px; font-size:14.5px; margin-bottom:16px; }
-.banner.bad { border-left-color:#FF6B6B; }
+.banner.bad { border-left-color:#C0392B; }
 pre { background:var(--ink); border:1px solid var(--rule); border-radius:3px; padding:13px;
       overflow:auto; font-size:13px; font-family:var(--mono); max-height:440px; margin:0; }
 details > summary { cursor:pointer; color:var(--mute); font-size:14px; padding:4px 0; }
@@ -332,7 +337,7 @@ function drawPreview(p) {
     <div class="vec">${v.values.map(x => {
       const h = Math.min(100, Math.abs(x) * 420);
       return `<i style="height:${h}%;background:${x >= 0 ? 'var(--rank)' : 'var(--lex)'};
-              opacity:${0.35 + Math.min(0.65, Math.abs(x) * 5)}"></i>`;
+              opacity:${0.5 + Math.min(0.5, Math.abs(x) * 5)}"></i>`;
     }).join('')}</div>
     <div class="kv" style="margin-top:11px">
       <div><span>model</span><b>${esc(v.model.split('/').pop())}</b></div>
