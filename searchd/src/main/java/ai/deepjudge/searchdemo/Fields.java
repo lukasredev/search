@@ -9,7 +9,7 @@ public final class Fields {
   /** Stored only, for display and for feeding the cross-encoder. */
   public static final String TITLE = "title";
   public static final String TEXT = "text";
-  /** 384-dimensional normalized embedding of title + text. */
+  /** Normalized embedding of title + text; 384 dimensions with the default model. */
   public static final String VECTOR = "vector";
 
   private Fields() {}

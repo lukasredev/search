@@ -8,14 +8,17 @@ running searchd and ranks queries by how sharply they show one specific thing:
   semantic-win  the embedding model finds it, BM25 does not  (vocabulary mismatch)
   fusion-win    neither retriever is good alone, fusion is   (the case for RRF)
 
-Writes ui/demo_queries.json. Run it again after changing the analyzer, the
-embedding model or the fusion constant — the examples can go stale.
+Writes data/index/<dataset>/demo_queries.json, which the service serves. Run it again
+after changing the analyzer, the embedding model or the fusion constant — the examples
+can go stale. Set AUTH_USER and AUTH_PASS if the service requires basic auth.
 
     python3 scripts/find_demo_queries.py [--host http://localhost:8080] [--top N]
 """
 import argparse
+import base64
 import json
 import math
+import os
 import pathlib
 import re
 import urllib.parse
@@ -35,12 +38,18 @@ TOPICS = {
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
+# The same variables the service reads, so one .env configures both.
+_user, _pass = os.environ.get("AUTH_USER"), os.environ.get("AUTH_PASS")
+HEADERS = ({"Authorization": "Basic " + base64.b64encode(f"{_user}:{_pass}".encode()).decode()}
+           if _user and _pass else {})
+
 
 def fetch(url, attempts=3):
     """The embedding sidecar is shared, so a busy box can stall a request. Retry."""
     for attempt in range(attempts):
         try:
-            return json.loads(urllib.request.urlopen(url, timeout=300).read())
+            req = urllib.request.Request(url, headers=HEADERS)
+            return json.loads(urllib.request.urlopen(req, timeout=300).read())
         except (TimeoutError, OSError):
             if attempt == attempts - 1:
                 raise

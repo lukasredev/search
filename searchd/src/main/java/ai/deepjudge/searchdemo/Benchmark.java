@@ -74,6 +74,13 @@ public final class Benchmark {
           1.2f, 0.75f, 100, 100, 100, RrfFusion.DEFAULT_K, 50, rerankN);
 
       Map<String, Object> res = pipeline.search(req);
+      // The pipeline degrades instead of failing when the sidecar is down, which is right
+      // for a live demo and wrong here: the dense, rrf and rerank rows would silently be
+      // BM25 numbers under other names.
+      if (res.get("warnings") instanceof List<?> w && !w.isEmpty()) {
+        throw new IllegalStateException("query " + q.getKey() + " ran degraded, refusing to "
+            + "record it: " + w);
+      }
 
       @SuppressWarnings("unchecked")
       Map<String, Object> eval = (Map<String, Object>) res.get("eval");

@@ -26,20 +26,26 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake the weights into the image so a container starts instantly and needs no network.
 # If you override EMBED_MODEL or RERANK_MODEL at runtime, that model is downloaded on
-# first use instead — rebuild with new build args to keep startup offline.
+# first use instead — rebuild with new build args to keep startup offline. Override the
+# matching *_REVISION too: the defaults are commits of the default models.
 ENV HF_HOME=/opt/models
 ARG EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ARG RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+# Pinned hub commits of the two models above. Change them together with the model.
+ARG EMBED_REVISION=1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+ARG RERANK_REVISION=233902d25c440f23af6f7d6e94d2946bac0bee0a
 RUN python -c "\
 from sentence_transformers import SentenceTransformer, CrossEncoder; \
-SentenceTransformer('${EMBED_MODEL}', device='cpu'); \
-CrossEncoder('${RERANK_MODEL}', device='cpu', max_length=512)" \
+SentenceTransformer('${EMBED_MODEL}', revision='${EMBED_REVISION}' or None, device='cpu'); \
+CrossEncoder('${RERANK_MODEL}', revision='${RERANK_REVISION}' or None, device='cpu', max_length=512)" \
  && chown -R app:app /opt/models
 
 COPY nlp/app.py .
 
 ENV EMBED_MODEL=${EMBED_MODEL} \
     RERANK_MODEL=${RERANK_MODEL} \
+    EMBED_REVISION=${EMBED_REVISION} \
+    RERANK_REVISION=${RERANK_REVISION} \
     RERANK_MAX_LEN=512 \
     TORCH_THREADS=4 \
     NLP_PORT=8081

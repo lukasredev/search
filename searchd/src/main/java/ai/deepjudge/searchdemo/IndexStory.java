@@ -75,15 +75,17 @@ public final class IndexStory {
             "docsInIndex", numDocs));
 
     // 3. The vector half: the same text, embedded by the same model the indexer used.
+    int vectorBytes = 0;
     if (withVector) {
       try {
         NlpClient.EmbedResult embedded = nlp.embed(List.of(text));
         float[] v = embedded.vectors()[0];
+        vectorBytes = embedded.dim() * 4;
         out.put("vector", Trace.map(
             "model", embedded.model(),
             "dim", embedded.dim(),
             "ms", embedded.ms(),
-            "bytes", embedded.dim() * 4,
+            "bytes", vectorBytes,
             "norm", Bm25Stage.round(norm(v)),
             "values", v));
       } catch (NlpClient.NlpUnavailableException e) {
@@ -94,7 +96,7 @@ public final class IndexStory {
     // 4. Rough cost. Postings compression makes the lexical side hard to predict, so this
     //    is labelled an estimate; the vector side is exact.
     out.put("costEstimate", Trace.map(
-        "vectorBytes", withVector ? 384 * 4 : 0,
+        "vectorBytes", vectorBytes,
         "storedBytes", text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
         "note", "postings are delta-encoded and compressed, so their true cost only shows "
               + "up in the whole-index figures from /api/stats"));

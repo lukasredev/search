@@ -447,7 +447,10 @@ async function runPreview() {
   state.docText = text;
   $('doIndex').disabled = true;
   try {
-    const r = await fetch(`${API}/api/index-preview?text=${encodeURIComponent(text)}`);
+    const r = await fetch(`${API}/api/index-preview`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 200));
     state.preview = await r.json();
     drawPreview(state.preview);
   } catch (e) { note('Could not reach the index: ' + e.message, true); }

@@ -52,9 +52,10 @@ AUTH_PASS=<something long>
 ```
 
 `AUTH_USER` + `AUTH_PASS` turn on HTTP basic auth over the whole service, compared in
-constant time. That is enough to stop a crawler discovering `/api/search` and burning your
-CPU on cross-encoder inference; it is **not** enough on its own, because basic auth sends
-the password in cleartext. Put TLS in front of it — Caddy needs two lines:
+constant time. Keep the password in `.env`, which is git-ignored; the `demos` job reads the
+same two variables. Basic auth is enough to stop a crawler discovering `/api/search` and
+burning your CPU on cross-encoder inference; it is **not** enough on its own, because it
+sends the password in cleartext. Put TLS in front of the service — Caddy needs two lines:
 
 ```caddyfile
 search.example.com {
@@ -62,8 +63,8 @@ search.example.com {
 }
 ```
 
-The request knobs are clamped server-side regardless (`rerank_n` ≤ 200, candidates ≤ 1000),
-so no query can ask for unbounded work.
+The request knobs are clamped server-side regardless (`rerank_n` ≤ 200, candidates ≤ 1000,
+postings from `/api/term` ≤ 1000, query terms ≤ 1024), so no query can ask for unbounded work.
 
 ## Sizing
 
@@ -151,18 +152,38 @@ What else the images expect:
 - **Resources** — `searchd` sizes its heap from the container limit (`MaxRAMPercentage=70`),
   so set a memory limit. `nlp` is CPU-bound: a rerank takes 3–4 s on 4 cores, so give it
   `TORCH_THREADS` worth of CPU and scale it out rather than up.
-- **Network** — `nlp` needs no ingress; point `searchd` at it with `NLP_URL`.
+- **Network** — `nlp` has no authentication, so nothing but `searchd` should reach it.
+  Point `searchd` at it with `NLP_URL` and lock it down with a NetworkPolicy (assuming
+  pods labelled `app: nlp` and `app: searchd`; the indexer and bench Jobs need access too):
+
+  ```yaml
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata: { name: nlp-from-searchd-only }
+  spec:
+    podSelector: { matchLabels: { app: nlp } }
+    policyTypes: [Ingress]
+    ingress:
+      - from: [{ podSelector: { matchLabels: { app: searchd } } }]
+        ports: [{ port: 8081 }]
+  ```
 
 ## Changing models
 
 Model weights are baked into the `nlp` image at build time so containers start instantly
-and need no network. Changing the model therefore means a rebuild, not just an env var:
+and need no network. Each model is pinned to a Hugging Face commit (`EMBED_REVISION`,
+`RERANK_REVISION`), so an upstream update cannot change results between two builds.
+Changing the model therefore means a rebuild with a matching revision — the default
+revisions are commits of the default models, and an empty revision means "latest":
 
 ```bash
-docker compose build --build-arg RERANK_MODEL=BAAI/bge-reranker-base nlp
+docker compose build --build-arg RERANK_MODEL=BAAI/bge-reranker-base \
+                     --build-arg RERANK_REVISION= nlp
 ```
 
 Setting `RERANK_MODEL` at runtime alone still works, but the model is then downloaded on
 first use, and the first request pays for it. Note that the embedding model is baked into
 the *index* as well — changing `EMBED_MODEL` means re-running the indexer, since the
-stored vectors came from the old model and comparing across models is meaningless.
+stored vectors came from the old model and comparing across models is meaningless. The
+indexer notices: `vectors.f32.json` records which model filled the embedding cache, and a
+different model re-embeds the corpus instead of reusing it.

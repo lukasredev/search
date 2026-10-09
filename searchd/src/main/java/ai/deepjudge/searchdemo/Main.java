@@ -71,7 +71,9 @@ public final class Main {
 
     Javalin app = Javalin.create(config -> {
       config.showJavalinBanner = false;
-      config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.anyHost()));
+      // Only the UI dev server on :5173 calls the API cross-origin. Allowing any origin
+      // would let every page open in the browser query a local, auth-less instance.
+      config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.allowHost("http://localhost:5173")));
       String uiDir = Config.uiDir();
       if (uiDir != null) {
         config.staticFiles.add(uiDir, io.javalin.http.staticfiles.Location.EXTERNAL);
@@ -115,9 +117,13 @@ public final class Main {
 
     // The indexing story: run arbitrary text through the real analyzer and embedding
     // model and show everything the index would store, without writing anything.
-    app.get("/api/index-preview", ctx -> ctx.json(indexStory.preview(
-        ctx.queryParamAsClass("text", String.class).getOrDefault(""),
-        ctx.queryParamAsClass("vector", Boolean.class).getOrDefault(true))));
+    // A POST, because a whole document does not fit in a URL: Jetty rejects request
+    // lines over 8 KB, and 2% of the CQADupStack posts are longer than that.
+    app.post("/api/index-preview", ctx -> {
+      PreviewRequest req = ctx.bodyAsClass(PreviewRequest.class);
+      ctx.json(indexStory.preview(req.text() == null ? "" : req.text(),
+          req.vector() == null || req.vector()));
+    });
 
     app.get("/api/doc/{id}", ctx -> {
       var hits = searcher.search(new org.apache.lucene.search.TermQuery(
@@ -216,6 +222,9 @@ public final class Main {
     });
     System.out.println("auth: basic auth required");
   }
+
+  /** Body of POST /api/index-preview. {@code vector} defaults to true. */
+  record PreviewRequest(String text, Boolean vector) {}
 
   private static SearchPipeline.Request parse(Context ctx) {
     String q = ctx.queryParamAsClass("q", String.class).getOrDefault("");

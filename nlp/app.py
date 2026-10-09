@@ -16,6 +16,10 @@ from sentence_transformers import CrossEncoder, SentenceTransformer
 
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 RERANK_MODEL = os.environ.get("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+# Hub commits, so a model update upstream cannot change results under us. Empty means
+# the latest revision, for trying a model before pinning it.
+EMBED_REVISION = os.environ.get("EMBED_REVISION") or None
+RERANK_REVISION = os.environ.get("RERANK_REVISION") or None
 MAX_LEN = int(os.environ.get("RERANK_MAX_LEN", "512"))
 
 torch.set_num_threads(int(os.environ.get("TORCH_THREADS", "4")))
@@ -29,7 +33,7 @@ def embedder() -> SentenceTransformer:
     with _load_lock:
         if "embed" not in _models:
             print(f"loading {EMBED_MODEL}", flush=True)
-            _models["embed"] = SentenceTransformer(EMBED_MODEL, device="cpu")
+            _models["embed"] = SentenceTransformer(EMBED_MODEL, revision=EMBED_REVISION, device="cpu")
     return _models["embed"]
 
 
@@ -37,7 +41,8 @@ def reranker() -> CrossEncoder:
     with _load_lock:
         if "rerank" not in _models:
             print(f"loading {RERANK_MODEL}", flush=True)
-            _models["rerank"] = CrossEncoder(RERANK_MODEL, max_length=MAX_LEN, device="cpu")
+            _models["rerank"] = CrossEncoder(RERANK_MODEL, revision=RERANK_REVISION, max_length=MAX_LEN,
+                                          device="cpu")
     return _models["rerank"]
 
 

@@ -26,7 +26,7 @@ public final class Config {
     return Duration.ofSeconds(Long.parseLong(env("SHUTDOWN_GRACE_SECONDS", "20")));
   }
 
-  /** Directory of built UI assets to serve, or null to skip (dev uses the Vite server). */
+  /** Directory holding ui/index.html and its fonts, or null to serve only the API. */
   public static String uiDir() { return System.getenv("UI_DIR"); }
 
   private static String env(String key, String fallback) {
