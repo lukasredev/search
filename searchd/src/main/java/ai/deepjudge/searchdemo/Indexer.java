@@ -158,18 +158,43 @@ public final class Indexer {
     return type;
   }
 
-  /** Reads the embedding cache if it matches the corpus, otherwise embeds and writes it. */
+  /** Which model produced the cached vectors. Kept beside the cache, in {@code vectors.f32.json}. */
+  record CacheInfo(String model, int dim, int count) {}
+
+  /**
+   * Reads the embedding cache if it matches the corpus and the sidecar's current model,
+   * otherwise embeds and writes it. A count check alone is not enough: after changing
+   * EMBED_MODEL the corpus is the same size, and the old model's vectors would be reused
+   * against new-model query vectors.
+   */
   private static float[][] embedCached(List<Dataset.Doc> docs, Path cache) throws IOException {
+    NlpClient nlp = new NlpClient(Config.nlpUrl(), java.time.Duration.ofMinutes(10));
+    NlpClient.EmbedResult probe = nlp.embed(List.of("probe"));
+    CacheInfo current = new CacheInfo(probe.model(), probe.dim(), docs.size());
+    Path infoPath = cache.resolveSibling(cache.getFileName() + ".json");
+    var json = new com.fasterxml.jackson.databind.ObjectMapper();
+
     if (Files.exists(cache)) {
       float[][] cached = readVectors(cache, docs.size());
-      if (cached != null) {
-        System.out.printf("reusing %d cached vectors from %s%n", cached.length, cache);
+      CacheInfo info = Files.exists(infoPath) ? json.readValue(infoPath.toFile(), CacheInfo.class) : null;
+      boolean dimOk = cached != null && cached.length > 0 && cached[0].length == current.dim();
+      if (dimOk && current.equals(info)) {
+        System.out.printf("reusing %d cached vectors from %s (%s)%n", cached.length, cache, info.model());
         return cached;
       }
-      System.out.println("cache at " + cache + " does not match the corpus; re-embedding");
+      if (dimOk && info == null) {
+        // Caches written before the model was recorded. Every one of those came from the
+        // default model, so adopt it rather than force a 25-minute Quora re-embed.
+        System.out.printf("cache at %s predates model tracking; assuming it is %s%n", cache, current.model());
+        json.writeValue(infoPath.toFile(), current);
+        return cached;
+      }
+      System.out.printf("cache at %s was built for %s, not %s; re-embedding%n",
+          cache, info == null ? "a different corpus or model" : info, current);
     }
-    float[][] vectors = embedAll(docs);
+    float[][] vectors = embedAll(docs, nlp);
     writeVectors(cache, vectors);
+    json.writeValue(infoPath.toFile(), current);
     System.out.println("cached vectors -> " + cache);
     return vectors;
   }
@@ -200,8 +225,7 @@ public final class Indexer {
     }
   }
 
-  private static float[][] embedAll(List<Dataset.Doc> docs) {
-    NlpClient nlp = new NlpClient(Config.nlpUrl(), java.time.Duration.ofMinutes(10));
+  private static float[][] embedAll(List<Dataset.Doc> docs, NlpClient nlp) {
     float[][] out = new float[docs.size()][];
     long t0 = System.nanoTime();
 

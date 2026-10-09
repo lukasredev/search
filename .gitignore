@@ -12,3 +12,8 @@ dist/
 __pycache__/
 *.class
 .DS_Store
+
+# Local secrets (AUTH_PASS); .env.example is the committed template.
+.env
+.env.*
+!.env.example

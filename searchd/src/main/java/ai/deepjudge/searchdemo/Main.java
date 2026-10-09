@@ -29,6 +29,12 @@ public final class Main {
   private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
       new com.fasterxml.jackson.databind.ObjectMapper();
 
+  /**
+   * Most postings /api/term returns. Each one costs a stored-fields read, and a common
+   * term on Quora has hundreds of thousands of them.
+   */
+  static final int MAX_POSTINGS = 1000;
+
   public static void main(String[] args) throws Exception {
     String datasetName = Config.dataset();
     Path indexDir = Config.indexRoot().resolve(datasetName);
@@ -104,7 +110,8 @@ public final class Main {
 
     app.get("/api/term", ctx -> ctx.json(termInfo(reader, searcher,
         ctx.queryParamAsClass("t", String.class).getOrDefault(""),
-        ctx.queryParamAsClass("limit", Integer.class).getOrDefault(20))));
+        Math.max(0, Math.min(MAX_POSTINGS,
+            ctx.queryParamAsClass("limit", Integer.class).getOrDefault(20))))));
 
     // The indexing story: run arbitrary text through the real analyzer and embedding
     // model and show everything the index would store, without writing anything.
@@ -176,6 +183,8 @@ public final class Main {
 
     app.exception(NlpClient.NlpUnavailableException.class, (e, ctx) ->
         ctx.status(503).json(Map.of("error", "nlp sidecar unavailable", "detail", e.getMessage())));
+    app.exception(SearchPipeline.QueryTooLongException.class, (e, ctx) ->
+        ctx.status(400).json(Map.of("error", e.getMessage())));
 
     app.start(Config.port());
   }

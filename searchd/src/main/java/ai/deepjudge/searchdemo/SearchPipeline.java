@@ -103,6 +103,10 @@ public final class SearchPipeline {
     Trace.Timer analyzeTimer = new Trace.Timer();
     List<DemoAnalyzer.ChainStep> chain = analyzer.trace(req.query());
     List<String> terms = chain.get(chain.size() - 1).tokens();
+    // Each term becomes one BooleanQuery clause, and Lucene refuses more than this many.
+    if (terms.size() > IndexSearcher.getMaxClauseCount()) {
+      throw new QueryTooLongException(terms.size(), IndexSearcher.getMaxClauseCount());
+    }
     List<Bm25Stage.QueryTerm> queryTerms = bm25.queryTerms(terms);
     trace.add("analyze", analyzeTimer.ms(),
         Trace.map("analyzer", "DemoAnalyzer", "chain", List.of(DemoAnalyzer.STEPS)),
@@ -182,6 +186,13 @@ public final class SearchPipeline {
     if (!warnings.isEmpty()) response.put("warnings", warnings);
 
     return response;
+  }
+
+  /** The query analyzed to more terms than a BooleanQuery may hold: a client error, not a 500. */
+  public static final class QueryTooLongException extends RuntimeException {
+    public QueryTooLongException(int terms, int max) {
+      super("query analyzed to " + terms + " terms; at most " + max + " are allowed");
+    }
   }
 
   /** Metrics after each stage, so the per-stage contribution is visible. */
