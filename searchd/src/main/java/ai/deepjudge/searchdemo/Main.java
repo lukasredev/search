@@ -29,6 +29,9 @@ public final class Main {
   private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
       new com.fasterxml.jackson.databind.ObjectMapper();
 
+  /** The UI dev server, the only page that calls the API cross-origin. */
+  static final String DEV_ORIGIN = "http://localhost:5173";
+
   /**
    * Most postings /api/term returns. Each one costs a stored-fields read, and a common
    * term on Quora has hundreds of thousands of them.
@@ -88,9 +91,6 @@ public final class Main {
 
     Javalin app = Javalin.create(config -> {
       config.showJavalinBanner = false;
-      // Only the UI dev server on :5173 calls the API cross-origin. Allowing any origin
-      // would let every page open in the browser query a local, auth-less instance.
-      config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.allowHost("http://localhost:5173")));
       if (uiDir != null) {
         config.staticFiles.add(uiDir, io.javalin.http.staticfiles.Location.EXTERNAL);
         config.spaRoot.addFile("/", uiDir + "/index.html", io.javalin.http.staticfiles.Location.EXTERNAL);
@@ -105,6 +105,22 @@ public final class Main {
       // sniff a response into HTML. Framing stays allowed: the demo may live in a slide.
       ctx.header("X-Content-Type-Options", "nosniff");
       ctx.header("Referrer-Policy", "no-referrer");
+      // Only the UI dev server gets CORS headers. Allowing any origin would let every page
+      // open in the browser query a local, auth-less instance. Not Javalin's CORS plugin:
+      // it answers 400 to any Origin it does not know, and browsers send Origin on
+      // same-origin POSTs too, which broke POST /api/index-preview everywhere but :5173.
+      if (DEV_ORIGIN.equals(ctx.header("Origin"))) {
+        ctx.header("Access-Control-Allow-Origin", DEV_ORIGIN);
+        ctx.header("Vary", "Origin");
+      }
+    });
+    // The dev server's POSTs carry a JSON content type, so the browser preflights them.
+    app.options("/api/*", ctx -> {
+      if (DEV_ORIGIN.equals(ctx.header("Origin"))) {
+        ctx.header("Access-Control-Allow-Methods", "GET, POST");
+        ctx.header("Access-Control-Allow-Headers", "content-type");
+      }
+      ctx.status(204);
     });
     requireAuthIfConfigured(app, authUser, authPass);
 

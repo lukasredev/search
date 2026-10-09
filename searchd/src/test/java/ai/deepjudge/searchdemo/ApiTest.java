@@ -67,10 +67,11 @@ class ApiTest {
     return HTTP.send(b.build(), HttpResponse.BodyHandlers.ofString());
   }
 
-  private static HttpResponse<String> post(String url, String body) throws Exception {
-    return HTTP.send(HttpRequest.newBuilder(URI.create(url))
-        .header("content-type", "application/json")
-        .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+  private static HttpResponse<String> post(String url, String body, String... headers) throws Exception {
+    var b = HttpRequest.newBuilder(URI.create(url)).header("content-type", "application/json");
+    if (headers.length > 0) b.headers(headers);
+    return HTTP.send(b.POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+        HttpResponse.BodyHandlers.ofString());
   }
 
   private static JsonNode json(HttpResponse<String> res) throws Exception {
@@ -337,6 +338,25 @@ class ApiTest {
         dev.headers().firstValue("Access-Control-Allow-Origin").orElse(null));
     var evil = get(base + "/api/health", "Origin", "https://evil.example");
     assertTrue(evil.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+
+    var preflight = HTTP.send(HttpRequest.newBuilder(URI.create(base + "/api/index-preview"))
+        .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+        .header("Origin", "http://localhost:5173")
+        .header("Access-Control-Request-Method", "POST").build(), HttpResponse.BodyHandlers.ofString());
+    assertEquals(204, preflight.statusCode());
+    assertEquals("http://localhost:5173",
+        preflight.headers().firstValue("Access-Control-Allow-Origin").orElse(null));
+  }
+
+  @Test
+  void sameOriginPostsAreNotRejected() throws Exception {
+    // Browsers send Origin on every POST, same-origin ones included: the deployed UI
+    // calls POST /api/index-preview with its own origin, which must not be a 400.
+    String base = start();
+    var res = post(base + "/api/index-preview", "{\"text\":\"vitamin\",\"vector\":false}",
+        "Origin", "https://search.example");
+    assertEquals(200, res.statusCode(), res.body());
+    assertTrue(res.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
   }
 
   @Test
