@@ -20,6 +20,7 @@ nDCG@10 after each stage, measured with `make bench`, against published BEIR bas
 
 | | BM25 | dense | RRF fusion | + reranker |
 |---|---|---|---|---|
+| **CQADupStack unix** — 47k Stack Exchange questions | 0.294 | **0.412** | 0.375 | 0.374 |
 | **SciFact** — 5k biomedical claims | **0.683** | 0.645 | **0.720** | 0.693 |
 | **NFCorpus** — 3.6k nutrition abstracts | **0.339** | 0.312 | **0.350** | — |
 | **Quora** — 523k duplicate questions | 0.778 | **0.839** | **0.839** | 0.796 |
@@ -27,12 +28,14 @@ nDCG@10 after each stage, measured with `make bench`, against published BEIR bas
 Read it across, not down. **Which retriever wins depends entirely on the data.** SciFact is
 full of exact technical terms, so matching words beats matching meaning. Quora is people asking
 the same question in different words, so matching meaning wins by six points and fusion adds
-nothing on top of it. Anyone who tells you one retrieval method is simply better has not run
-both on their own data.
+nothing on top of it. On CQADupStack unix the embedding model wins by twelve points, and fusing
+in the weaker BM25 ranking costs four of them back. Anyone who tells you one retrieval method is
+simply better has not run both on their own data.
 
 And the last column refuses to cooperate anywhere: the cross-encoder makes the ranking *worse*
-on every dataset here. That is not a bug — it reproduces across four reranker models and three
-pool depths and matches the published figures. See
+on SciFact and Quora and leaves unix flat (0.375 → 0.374). That is not a bug — on SciFact and
+Quora it reproduces across four reranker models and three pool depths and matches the published
+figures. See
 [docs/reranker-findings.md](docs/reranker-findings.md); it is the most interesting slide in the
 deck, not the broken one.
 
@@ -41,9 +44,9 @@ deck, not the broken one.
 Prerequisites: JDK 21, Maven, Python 3.11 (via `uv`). No Docker needed for local dev.
 
 ```bash
-make data            # fetch + normalize SciFact and NFCorpus (~5 MB, no auth)
+python3 scripts/fetch_dataset.py cqadupstack-unix   # ~50 MB, no auth; `make data` fetches all
 make nlp             # terminal 1: embedding + reranking sidecar on :8081
-make index           # terminal 2: build the Lucene index (~2 min, embeds the corpus)
+make index           # terminal 2: build the Lucene index (~15 min, embeds the corpus)
 make serve           # terminal 2: search API + UI on http://localhost:8080
 ```
 
@@ -51,15 +54,19 @@ Then open <http://localhost:8080>. `make index` caches its embeddings in
 `data/<dataset>/vectors.f32`, so re-indexing after an analyzer or HNSW change takes seconds,
 not minutes.
 
-Switch corpora with `DATASET=quora make index serve`. Quora is the one to use for a computer
-science audience — the queries are real programming questions, and duplicate-question retrieval
-makes the vocabulary-mismatch argument on its own:
+The default corpus is **CQADupStack unix**: 47k questions from Unix & Linux Stack Exchange,
+with their bodies, and 1,072 queries whose relevant documents are the questions moderators
+closed as duplicates. It is the one to use for a computer science audience, because every
+stage of the pipeline has queries where it visibly changes what is on screen, not just the
+metric:
 
-> *"Which server-side scripting language should we use in web development today?"*
-> and *"Which languages can be used for server-side web development aside from PHP?"*
-> share 19% of their words and mean the same thing.
+> *"What's the difference between $@ and $\*"* — the analyzer throws away `$@` and `$*`,
+> BM25 is left with "what differ between" and returns curl vs wget. The embedding model ranks
+> three correct answers first.
 
-It is 523k documents, so budget ~25 minutes for the one-time embedding pass (cached afterwards).
+Switch corpora with `DATASET=quora make index serve`. Quora has one-line documents and many
+unlabelled near-duplicates, so later stages mostly reshuffle results that already look right;
+it is 523k documents, so budget ~25 minutes for the one-time embedding pass (cached afterwards).
 
 To run it on a server, see [docs/deploy.md](docs/deploy.md).
 
@@ -70,16 +77,16 @@ one `IndexWriter` writes both the inverted index (a `TextField`) and the HNSW gr
 `KnnFloatVectorField`), into the same segments. A modern engine is one index with two
 retrieval paths, not two systems bolted together.
 
-`GET /api/stats` then shows what each path costs on disk:
+`GET /api/stats` then shows what each path costs on disk (CQADupStack unix, 47k posts):
 
 | component | size |
 |---|---|
-| HNSW vectors | 8.2 MB |
-| stored fields | 4.9 MB |
-| term vectors | 4.7 MB |
-| inverted index | **2.1 MB** |
+| HNSW vectors | 75.4 MB |
+| term vectors | 28.8 MB |
+| stored fields | 28.0 MB |
+| inverted index | **13.8 MB** |
 
-The semantic index is four times the size of the lexical one. Worth saying out loud.
+The semantic index is five times the size of the lexical one. Worth saying out loud.
 
 **Analysis.** The UI replays the analyzer chain one filter at a time —
 `StandardTokenizer → EnglishPossessiveFilter → LowerCaseFilter → StopFilter → PorterStemFilter`
@@ -149,13 +156,15 @@ searchd/     Java 21 + Lucene 10.4 + Javalin. Index, pipeline, API, static UI ho
 nlp/         FastAPI sidecar: all-MiniLM-L6-v2 + ms-marco-MiniLM-L-6-v2, CPU
 ui/          single static page, no build step
 scripts/     dataset fetch + normalization (stdlib only)
-data/        datasets and index (gitignored)
+data/        datasets and index (gitignored, except each index's example queries and benchmark)
 ```
 
 ## Data
 
-BEIR **SciFact** (5,183 docs / 300 queries) and **NFCorpus** (3,633 docs / 323 queries), both
-freely downloadable with relevance judgments. Normalized on fetch to three files —
+BEIR **CQADupStack unix** (47,382 docs / 1,072 queries, the default), **SciFact** (5,183 docs /
+300 queries), **NFCorpus** (3,633 docs / 323 queries) and **Quora** (522,931 docs), all freely
+downloadable with relevance judgments. CQADupStack comes from the MTEB mirror on Hugging Face,
+because BEIR only ships it as one 5 GB zip of twelve subforums. Normalized on fetch to three files —
 `corpus.jsonl`, `queries.tsv`, `qrels.tsv` — so any corpus in that shape drops straight in; the
 Java side knows nothing about BEIR.
 

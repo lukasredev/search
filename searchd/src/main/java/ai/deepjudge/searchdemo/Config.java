@@ -5,7 +5,7 @@ import java.nio.file.Path;
 /** Environment-driven configuration. Defaults are the local dev layout. */
 public final class Config {
 
-  public static String dataset() { return env("DATASET", "scifact"); }
+  public static String dataset() { return env("DATASET", "cqadupstack-unix"); }
 
   public static Path dataRoot() { return Path.of(env("DATA_ROOT", "../data")); }
 

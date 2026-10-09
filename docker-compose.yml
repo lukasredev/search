@@ -9,7 +9,7 @@
 
 name: search-demo
 
-x-dataset: &dataset ${DATASET:-scifact}
+x-dataset: &dataset ${DATASET:-cqadupstack-unix}
 
 services:
   nlp:
@@ -59,7 +59,7 @@ services:
       - ./scripts:/work/scripts:ro
       - data:/work/data
     entrypoint: ["python3", "scripts/fetch_dataset.py"]
-    command: ["scifact"]
+    command: ["cqadupstack-unix"]
 
   indexer:
     profiles: ["setup"]

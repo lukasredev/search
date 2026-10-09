@@ -13,7 +13,7 @@ JAR        := searchd/target/searchd.jar
 # 20-minute index build was lost once. Rebuilding while something runs is normal during
 # a talk, so make it safe rather than a rule to remember.
 RUNJAR     := searchd/target/searchd-running.jar
-DATASET    ?= scifact
+DATASET    ?= cqadupstack-unix
 export JAVA_HOME
 
 .PHONY: help data build index serve nlp bench clean reindex demos \
@@ -21,7 +21,7 @@ export JAVA_HOME
         docker-bench docker-demos
 
 help:
-	@echo "make data            fetch + normalize scifact, nfcorpus and quora"
+	@echo "make data            fetch + normalize every dataset"
 	@echo "make build           compile the Java service"
 	@echo "make index           build the Lucene index (needs nlp running)"
 	@echo "make nlp             run the embedding/rerank sidecar on :8081"
@@ -35,7 +35,7 @@ help:
 	@echo "  make docker-setup    fetch the dataset and build the index in a volume"
 	@echo "  make docker-up       start, make docker-down to stop"
 	@echo
-	@echo "DATASET=$(DATASET)   (scifact | nfcorpus | quora)"
+	@echo "DATASET=$(DATASET)   (cqadupstack-unix | scifact | nfcorpus | quora)"
 
 data:
 	python3 scripts/fetch_dataset.py

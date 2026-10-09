@@ -57,7 +57,7 @@ def ndcg(ranked, rel, k=10):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="http://localhost:8080")
-    ap.add_argument("--dataset", default="scifact")
+    ap.add_argument("--dataset", default="cqadupstack-unix")
     ap.add_argument("--top", type=int, default=5, help="examples to keep per category")
     ap.add_argument("--topic", help=f"restrict to a preset ({', '.join(TOPICS)}) or a regex")
     ap.add_argument("--limit", type=int, help="scan at most this many queries")

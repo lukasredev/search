@@ -29,7 +29,7 @@ RUN chmod +x /usr/local/bin/entrypoint
 ENV DATA_ROOT=/data \
     INDEX_ROOT=/data/index \
     UI_DIR=/app/ui \
-    DATASET=scifact \
+    DATASET=cqadupstack-unix \
     NLP_URL=http://nlp:8081 \
     PORT=8080 \
     JAVA_OPTS="-XX:MaxRAMPercentage=70"

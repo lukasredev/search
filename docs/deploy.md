@@ -12,12 +12,12 @@ so rebuilding images never costs you a re-index.
 ## First run
 
 ```bash
-# 1. download and normalise a dataset into the volume (a few MB, no auth)
-docker compose --profile setup run --rm fetch scifact
+# 1. download and normalise a dataset into the volume (~50 MB, no auth)
+docker compose --profile setup run --rm fetch cqadupstack-unix
 
 # 2. build the index. Embeds the corpus, so this is the slow step:
-#    scifact ~2 min, nfcorpus ~1.5 min, quora ~25 min.
-docker compose --profile setup run --rm indexer scifact
+#    cqadupstack-unix ~15 min, scifact ~2 min, nfcorpus ~1.5 min, quora ~25 min.
+docker compose --profile setup run --rm indexer cqadupstack-unix
 
 # 3. start
 docker compose up -d
@@ -38,10 +38,10 @@ the running service without a restart:
 
 ```bash
 # per-stage metrics over the whole query set, shown in the last chapter
-docker compose --profile setup run --rm bench scifact
+docker compose --profile setup run --rm bench cqadupstack-unix
 
 # the curated example queries in the UI (needs the service up)
-docker compose --profile setup run --rm demos --dataset scifact --topic cs
+docker compose --profile setup run --rm demos --dataset cqadupstack-unix
 ```
 
 ## Exposing it
@@ -107,10 +107,10 @@ that will never be used. On `arm64` the PyPI wheel is already CPU-only.
 ```bash
 docker compose config                       # compose file is valid
 docker compose build                        # the real test
-docker compose --profile setup run --rm fetch scifact
-docker compose --profile setup run --rm indexer scifact
+docker compose --profile setup run --rm fetch cqadupstack-unix
+docker compose --profile setup run --rm indexer cqadupstack-unix
 docker compose up -d
-curl -fsS localhost:8080/api/health | jq    # {"ok":true,"docs":5183,"nlp":{"ok":true}}
+curl -fsS localhost:8080/api/health | jq    # {"ok":true,"docs":47382,"nlp":{"ok":true}}
 curl -fsS "localhost:8080/api/search?q=vitamin+d&rerank=false" | jq '.stages[].name'
 ```
 

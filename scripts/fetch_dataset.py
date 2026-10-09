@@ -8,6 +8,7 @@ and students should be able to read this top to bottom.
     data/<name>/queries.tsv    qid \t query
     data/<name>/qrels.tsv      qid \t docid \t relevance
 """
+import contextlib
 import json
 import pathlib
 import sys
@@ -15,65 +16,78 @@ import urllib.request
 import zipfile
 
 BASE = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets"
-DATASETS = {"scifact": "test", "nfcorpus": "test", "quora": "test"}
+DATASETS = {"scifact": "test", "nfcorpus": "test", "quora": "test", "cqadupstack-unix": "test"}
+# BEIR only ships CQADupStack as one 5 GB zip of twelve subforums; MTEB mirrors each
+# subforum on its own, as the same BEIR files without the zip.
+HF = {"cqadupstack-unix": "https://huggingface.co/datasets/mteb/cqadupstack-unix/resolve/main"}
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
-def download(name: str, raw: pathlib.Path) -> pathlib.Path:
-    zpath = raw / f"{name}.zip"
-    if zpath.exists():
-        print(f"  zip already present: {zpath}")
-        return zpath
-    url = f"{BASE}/{name}.zip"
+def fetch(url: str, dest: pathlib.Path) -> pathlib.Path:
+    if dest.exists():
+        print(f"  already present: {dest}")
+        return dest
     print(f"  downloading {url}")
-    raw.mkdir(parents=True, exist_ok=True)
-    tmp = zpath.with_suffix(".zip.part")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
     with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
         while chunk := r.read(1 << 20):
             f.write(chunk)
             print(f"\r  {f.tell() / 1e6:.1f} MB", end="", flush=True)
     print()
-    tmp.rename(zpath)
-    return zpath
+    tmp.rename(dest)
+    return dest
 
 
-def normalize(name: str, split: str, zpath: pathlib.Path, out: pathlib.Path) -> None:
-    out.mkdir(parents=True, exist_ok=True)
+@contextlib.contextmanager
+def download(name: str, split: str, raw: pathlib.Path):
+    """Yield open(relative_path) over the dataset's BEIR files, wherever they came from."""
+    if name in HF:
+        files = ["corpus.jsonl", "queries.jsonl", f"qrels/{split}.tsv"]
+        for f in files:
+            fetch(f"{HF[name]}/{f}", raw / name / f)
+        yield lambda f: open(raw / name / f, "rb")
+        return
+    zpath = fetch(f"{BASE}/{name}.zip", raw / f"{name}.zip")
     with zipfile.ZipFile(zpath) as z:
         names = {p.split("/", 1)[-1]: p for p in z.namelist() if not p.endswith("/")}
+        yield lambda f: z.open(names[f])
 
-        n = 0
-        with z.open(names["corpus.jsonl"]) as src, open(out / "corpus.jsonl", "w") as dst:
-            for line in src:
-                d = json.loads(line)
-                # BEIR uses "_id"; keep only the three fields the indexer cares about.
-                dst.write(json.dumps({
-                    "id": d["_id"],
-                    "title": (d.get("title") or "").strip(),
-                    "text": (d.get("text") or "").strip(),
-                }) + "\n")
-                n += 1
-        print(f"  corpus.jsonl   {n:>7} docs")
 
-        # qrels first, so we can emit only the queries that actually have judgments.
-        judged, pairs = set(), 0
-        with z.open(names[f"qrels/{split}.tsv"]) as src, open(out / "qrels.tsv", "w") as dst:
-            next(src)  # header: query-id\tcorpus-id\tscore
-            for line in src:
-                qid, docid, rel = line.decode().rstrip("\n").split("\t")[:3]
-                dst.write(f"{qid}\t{docid}\t{rel}\n")
-                judged.add(qid)
-                pairs += 1
-        print(f"  qrels.tsv      {pairs:>7} judgments over {len(judged)} queries")
+def normalize(split: str, open_file, out: pathlib.Path) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with open_file("corpus.jsonl") as src, open(out / "corpus.jsonl", "w") as dst:
+        for line in src:
+            d = json.loads(line)
+            # BEIR uses "_id"; keep only the three fields the indexer cares about.
+            dst.write(json.dumps({
+                "id": d["_id"],
+                "title": (d.get("title") or "").strip(),
+                "text": (d.get("text") or "").strip(),
+            }) + "\n")
+            n += 1
+    print(f"  corpus.jsonl   {n:>7} docs")
 
-        q = 0
-        with z.open(names["queries.jsonl"]) as src, open(out / "queries.tsv", "w") as dst:
-            for line in src:
-                d = json.loads(line)
-                if d["_id"] in judged:
-                    dst.write(f"{d['_id']}\t{' '.join(d['text'].split())}\n")
-                    q += 1
-        print(f"  queries.tsv    {q:>7} judged queries")
+    # qrels first, so we can emit only the queries that actually have judgments.
+    judged, pairs = set(), 0
+    with open_file(f"qrels/{split}.tsv") as src, open(out / "qrels.tsv", "w") as dst:
+        next(src)  # header: query-id\tcorpus-id\tscore
+        for line in src:
+            qid, docid, rel = line.decode().rstrip("\n").split("\t")[:3]
+            dst.write(f"{qid}\t{docid}\t{rel}\n")
+            judged.add(qid)
+            pairs += 1
+    print(f"  qrels.tsv      {pairs:>7} judgments over {len(judged)} queries")
+
+    q = 0
+    with open_file("queries.jsonl") as src, open(out / "queries.tsv", "w") as dst:
+        for line in src:
+            d = json.loads(line)
+            if d["_id"] in judged:
+                dst.write(f"{d['_id']}\t{' '.join(d['text'].split())}\n")
+                q += 1
+    print(f"  queries.tsv    {q:>7} judged queries")
 
 
 def main() -> int:
@@ -83,8 +97,8 @@ def main() -> int:
             print(f"unknown dataset {name!r}; known: {', '.join(DATASETS)}", file=sys.stderr)
             return 2
         print(f"{name}:")
-        zpath = download(name, ROOT / "data" / "raw")
-        normalize(name, DATASETS[name], zpath, ROOT / "data" / name)
+        with download(name, DATASETS[name], ROOT / "data" / "raw") as open_file:
+            normalize(DATASETS[name], open_file, ROOT / "data" / name)
     return 0
 
 
