@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# Base images come from AWS's mirror of the Docker Hub official images: CI runners share
+# IPs, so anonymous Docker Hub pulls hit its rate limit and fail the build.
+FROM public.ecr.aws/docker/library/python:3.11-slim
 LABEL org.opencontainers.image.title="search-demo nlp" \
       org.opencontainers.image.description="CPU embedding and reranking sidecar"
 
