@@ -1,0 +1,47 @@
+# Security updates only, one grouped pull request per ecosystem across the whole repo.
+# open-pull-requests-limit: 0 turns off routine version updates; security updates still
+# open. Needs "Dependabot security updates" switched on in the repository settings.
+# Dependabot cannot group security updates across ecosystems, so this is as close to
+# a single pull request as it gets.
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /searchd
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      maven-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /nlp
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories: [/searchd, /nlp]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
