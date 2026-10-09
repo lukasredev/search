@@ -165,9 +165,14 @@ public final class Bm25Stage {
     return colon < 0 ? fieldTerm : fieldTerm.substring(colon + 1);
   }
 
-  /** Finds a leaf whose description is exactly {@code key = <number>}. */
+  /**
+   * Finds the leaf for one BM25 input. Lucene 10 describes them as
+   * {@code "n, number of documents containing term"}; older versions as {@code "n = 12"}.
+   */
   private static Double findValue(Explanation node, String key) {
-    if (node.getDescription().startsWith(key + " =")) {
+    String desc = node.getDescription();
+    if (node.getDetails().length == 0
+        && (desc.equals(key) || desc.startsWith(key + ",") || desc.startsWith(key + " ="))) {
       return node.getValue().doubleValue();
     }
     for (Explanation child : node.getDetails()) {

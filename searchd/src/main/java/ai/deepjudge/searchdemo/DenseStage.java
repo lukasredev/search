@@ -54,6 +54,9 @@ public final class DenseStage {
     Trace.Timer embedTimer = new Trace.Timer();
     NlpClient.EmbedResult embedded = nlp.embedQuery(query);
     double embedMs = embedTimer.ms();
+    if (embedded.vectors() == null || embedded.vectors().length != 1) {
+      throw new NlpClient.NlpUnavailableException("nlp /embed returned no vector for the query");
+    }
     float[] vector = embedded.vectors()[0];
 
     // 2. Walk the HNSW graph in each segment, then merge.

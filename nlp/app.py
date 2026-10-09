@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 import torch
 from fastapi import FastAPI, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
@@ -63,8 +63,15 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="search-demo nlp", lifespan=lifespan)
 
 
+# Bounds on one request. The sidecar has no auth, so it should not take unbounded work
+# from whoever can reach it; searchd sends one query or an EMBED_BATCH (256) of docs, and
+# reranks at most 200. An empty list is a client error, not a crash in the model.
+MAX_EMBED_TEXTS = 4096
+MAX_RERANK_DOCS = 1000
+
+
 class EmbedRequest(BaseModel):
-    texts: list[str]
+    texts: list[str] = Field(min_length=1, max_length=MAX_EMBED_TEXTS)
 
 
 class EmbedResponse(BaseModel):
@@ -76,7 +83,7 @@ class EmbedResponse(BaseModel):
 
 class RerankRequest(BaseModel):
     query: str
-    docs: list[str]
+    docs: list[str] = Field(min_length=1, max_length=MAX_RERANK_DOCS)
 
 
 class RerankItem(BaseModel):

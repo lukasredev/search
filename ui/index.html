@@ -666,7 +666,7 @@ function drawExamples() {
     <div class="exrow"><span class="cat">${CAT[k]}</span>
       ${d[k].slice(0, 3).map(r => `<span class="chip${r.ladder ? ' pinned' : ''}"
         data-q="${esc(r.text)}" title="${esc(r.teaches || '')}"
-        >${r.ladder ? `<i>${r.ladder}</i>` : ''}${esc(r.text)}</span>`).join('')}
+        >${r.ladder ? `<i>${esc(r.ladder)}</i>` : ''}${esc(r.text)}</span>`).join('')}
     </div>`).join('');
 
   document.querySelectorAll('.chip').forEach(el => el.onclick = () => {

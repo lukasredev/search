@@ -16,6 +16,14 @@ public final class Config {
 
   public static int port() { return Integer.parseInt(env("PORT", "8080")); }
 
+  /**
+   * Interface to listen on. Loopback by default, because auth is off by default and a
+   * laptop on conference Wi-Fi should not offer its API to the room. The container sets
+   * 0.0.0.0 and leaves exposure to the published port. Not {@code HOST}: zsh sets that to
+   * the machine's hostname.
+   */
+  public static String listenHost() { return env("LISTEN_HOST", "127.0.0.1"); }
+
   /** A request running longer than this fails /livez. NLP calls time out after 2 min. */
   public static Duration stuckRequestAfter() {
     return Duration.ofSeconds(Long.parseLong(env("STUCK_REQUEST_SECONDS", "600")));

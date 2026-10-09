@@ -54,6 +54,10 @@ Then open <http://localhost:8080>. `make index` caches its embeddings in
 `data/<dataset>/vectors.f32`, so re-indexing after an analyzer or HNSW change takes seconds,
 not minutes.
 
+`make serve` listens on loopback only, so the auth-less API is not offered to everyone on the
+venue Wi-Fi. To drive the demo from another device, set `LISTEN_HOST=0.0.0.0` and also
+`AUTH_USER`/`AUTH_PASS`.
+
 The default corpus is **CQADupStack unix**: 47k questions from Unix & Linux Stack Exchange,
 with their bodies, and 1,072 queries whose relevant documents are the questions moderators
 closed as duplicates. It is the one to use for a computer science audience, because every
@@ -161,12 +165,28 @@ searchd/     Java 21 + Lucene 10.4 + Javalin. Index, pipeline, API, static UI ho
   Evaluator.java      nDCG, recall, MRR
   Benchmark.java      full query set -> benchmark.json
   Probes.java         /livez and /readyz
+  src/test/           JUnit: every stage, the HTTP API and auth, against a fake sidecar
 nlp/         FastAPI sidecar: all-MiniLM-L6-v2 + ms-marco-MiniLM-L-6-v2, CPU, pinned revisions
+tests/       end-to-end checks against a running stack (make test-live)
 ui/          single static page, no build step; six chapters, one per pipeline stage
 scripts/     dataset fetch + normalization (stdlib only), demo-query finder
 docs/        deployment guide, reranker findings
 data/        datasets and index (gitignored, except each index's example queries and benchmark)
 ```
+
+## Tests
+
+```bash
+make test        # ~40 s: Java and Python, no models or index needed
+make test-live   # against a running stack: URL=http://localhost:8080 by default
+```
+
+`make test` builds a nine-document index with the real `Indexer` and serves it through the
+real HTTP app, with a fake sidecar that speaks the same JSON (hashed bag-of-words embeddings,
+word-overlap rerank scores). That covers every stage, the API, basic auth, the probes and the
+embedding cache. The sidecar's own tests swap its two models for fakes and pin the response
+shapes `NlpClient` reads. `make test-live` is the end-to-end half: real models, real index, and
+the one assumption no fake can check, which is that the two services agree.
 
 ## Data
 

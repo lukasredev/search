@@ -43,6 +43,12 @@ public final class RerankStage {
     Trace.Timer timer = new Trace.Timer();
     NlpClient.RerankResult res = nlp.rerank(query, texts);
     double ms = timer.ms();
+    if (res.items() == null || res.items().size() != pool.size()) {
+      // Scores are matched to documents by position, so a short answer would pair them up
+      // wrongly or throw. Treat it like any other sidecar failure.
+      throw new NlpClient.NlpUnavailableException("nlp /rerank returned "
+          + (res.items() == null ? "no" : res.items().size()) + " scores for " + pool.size() + " docs");
+    }
 
     // Rank before this stage, so the UI can draw the movement.
     Map<String, Integer> previousRank = new HashMap<>();

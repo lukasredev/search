@@ -72,13 +72,20 @@ public final class Indexer {
   }
 
   public static void build(Path dataDir, Path indexDir, boolean withVectors) throws IOException {
+    build(dataDir, indexDir,
+        withVectors ? new NlpClient(Config.nlpUrl(), java.time.Duration.ofMinutes(10)) : null);
+  }
+
+  /** As above; {@code nlp} embeds the corpus, or is null to build a BM25-only index. */
+  static void build(Path dataDir, Path indexDir, NlpClient nlp) throws IOException {
+    boolean withVectors = nlp != null;
     List<Dataset.Doc> docs = Dataset.readDocs(dataDir);
     System.out.printf("read %d docs%n", docs.size());
 
     // Embed first, in batches, so a sidecar failure happens before we touch the index.
     // Cached to disk: re-indexing to try a different analyzer or HNSW setting should not
     // cost another pass over the embedding model.
-    float[][] vectors = withVectors ? embedCached(docs, dataDir.resolve("vectors.f32")) : null;
+    float[][] vectors = withVectors ? embedCached(docs, dataDir.resolve("vectors.f32"), nlp) : null;
 
     Files.createDirectories(indexDir);
     try (Directory dir = FSDirectory.open(indexDir);
@@ -167,8 +174,8 @@ public final class Indexer {
    * EMBED_MODEL the corpus is the same size, and the old model's vectors would be reused
    * against new-model query vectors.
    */
-  private static float[][] embedCached(List<Dataset.Doc> docs, Path cache) throws IOException {
-    NlpClient nlp = new NlpClient(Config.nlpUrl(), java.time.Duration.ofMinutes(10));
+  private static float[][] embedCached(List<Dataset.Doc> docs, Path cache, NlpClient nlp)
+      throws IOException {
     NlpClient.EmbedResult probe = nlp.embed(List.of("probe"));
     CacheInfo current = new CacheInfo(probe.model(), probe.dim(), docs.size());
     Path infoPath = cache.resolveSibling(cache.getFileName() + ".json");

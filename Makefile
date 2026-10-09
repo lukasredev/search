@@ -16,7 +16,7 @@ RUNJAR     := searchd/target/searchd-running.jar
 DATASET    ?= cqadupstack-unix
 export JAVA_HOME
 
-.PHONY: help data build index serve nlp bench clean reindex demos \
+.PHONY: help data build index serve nlp bench clean reindex demos test test-live \
         docker-build docker-setup docker-up docker-down docker-logs \
         docker-bench docker-demos
 
@@ -29,6 +29,8 @@ help:
 	@echo "make bench           run the full query set, write benchmark.json"
 	@echo "make reindex         rebuild the index reusing cached embeddings"
 	@echo "make demos           regenerate curated example queries (TOPIC=--topic cs)"
+	@echo "make test            unit + API tests, Java and Python (no models, no index)"
+	@echo "make test-live       end-to-end checks against a running stack (URL=...)"
 	@echo
 	@echo "Docker:"
 	@echo "  make docker-build    build both images"
@@ -73,6 +75,20 @@ bench-fast: $(JAR)
 
 demos: ## regenerate the curated example queries (needs serve running)
 	python3 scripts/find_demo_queries.py --dataset $(DATASET) $(TOPIC)
+
+# Java against a fake sidecar and a throwaway index, Python against fake models. Fast,
+# and needs neither the real models nor a built index.
+PYTEST := nlp/.venv/bin/python -m pytest
+test:
+	$(MVN) -q -B -f searchd/pom.xml test
+	@$(PYTEST) --version >/dev/null 2>&1 || uv pip install --python nlp/.venv/bin/python -q -r nlp/requirements-dev.txt
+	$(PYTEST) -q nlp/tests scripts/tests
+
+# The same checks a talk depends on, against the real models and index. Set AUTH_USER and
+# AUTH_PASS as well if the service requires them.
+URL ?= http://localhost:8080
+test-live:
+	SEARCHD_URL=$(URL) $(PYTEST) -q tests
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker-build:

@@ -59,22 +59,38 @@ public final class Main {
       System.exit(1);
     }
     var reader = DirectoryReader.open(dir);
-    var searcher = new IndexSearcher(reader);
-    var analyzer = new DemoAnalyzer();
     var dataset = Dataset.load(dataDir);
     var nlp = new NlpClient(Config.nlpUrl(), Duration.ofMinutes(2));
-    var pipeline = new SearchPipeline(searcher, analyzer, dataset, nlp);
-    var indexStory = new IndexStory(reader, analyzer, nlp);
 
     System.out.printf("serving %s: %d docs, %d judged queries%n",
         datasetName, reader.numDocs(), dataset.queries().size());
+
+    Javalin app = createApp(reader, dataset, nlp, indexDir, Config.uiDir(),
+        System.getenv("AUTH_USER"), System.getenv("AUTH_PASS"), Config.stuckRequestAfter());
+    Runtime.getRuntime().addShutdownHook(new Thread(app::stop, "shutdown"));
+    app.start(Config.listenHost(), Config.port());
+  }
+
+  /**
+   * Every route, wired to an open index. Separate from {@link #main} so the tests can
+   * stand the real HTTP surface up against a small index and a fake sidecar.
+   *
+   * @param uiDir    directory holding the UI, or null to serve only the API
+   * @param authUser with {@code authPass}, turns on basic auth; null or blank leaves it off
+   */
+  static Javalin createApp(DirectoryReader reader, Dataset dataset, NlpClient nlp, Path indexDir,
+                           String uiDir, String authUser, String authPass, Duration stuckAfter) {
+    String datasetName = dataset.name();
+    var searcher = new IndexSearcher(reader);
+    var analyzer = new DemoAnalyzer();
+    var pipeline = new SearchPipeline(searcher, analyzer, dataset, nlp);
+    var indexStory = new IndexStory(reader, analyzer, nlp);
 
     Javalin app = Javalin.create(config -> {
       config.showJavalinBanner = false;
       // Only the UI dev server on :5173 calls the API cross-origin. Allowing any origin
       // would let every page open in the browser query a local, auth-less instance.
       config.bundledPlugins.enableCors(cors -> cors.addRule(it -> it.allowHost("http://localhost:5173")));
-      String uiDir = Config.uiDir();
       if (uiDir != null) {
         config.staticFiles.add(uiDir, io.javalin.http.staticfiles.Location.EXTERNAL);
         config.spaRoot.addFile("/", uiDir + "/index.html", io.javalin.http.staticfiles.Location.EXTERNAL);
@@ -82,10 +98,15 @@ public final class Main {
       // On SIGTERM, finish in-flight searches (a rerank takes seconds) before exiting.
       config.jetty.modifyServer(server -> server.setStopTimeout(Config.shutdownGrace().toMillis()));
     });
-    Runtime.getRuntime().addShutdownHook(new Thread(app::stop, "shutdown"));
 
-    new Probes(Config.stuckRequestAfter()).register(app, searcher, datasetName);
-    requireAuthIfConfigured(app);
+    new Probes(stuckAfter).register(app, searcher, datasetName);
+    app.before(ctx -> {
+      // The API returns JSON and the UI renders it with innerHTML, so a browser must never
+      // sniff a response into HTML. Framing stays allowed: the demo may live in a slide.
+      ctx.header("X-Content-Type-Options", "nosniff");
+      ctx.header("Referrer-Policy", "no-referrer");
+    });
+    requireAuthIfConfigured(app, authUser, authPass);
 
     app.get("/api/health", ctx -> {
       Map<String, Object> out = new LinkedHashMap<>();
@@ -110,7 +131,7 @@ public final class Main {
           "tokens", analyzer.analyze(Fields.CONTENT, text)));
     });
 
-    app.get("/api/term", ctx -> ctx.json(termInfo(reader, searcher,
+    app.get("/api/term", ctx -> ctx.json(termInfo(reader, analyzer,
         ctx.queryParamAsClass("t", String.class).getOrDefault(""),
         Math.max(0, Math.min(MAX_POSTINGS,
             ctx.queryParamAsClass("limit", Integer.class).getOrDefault(20))))));
@@ -120,7 +141,8 @@ public final class Main {
     // A POST, because a whole document does not fit in a URL: Jetty rejects request
     // lines over 8 KB, and 2% of the CQADupStack posts are longer than that.
     app.post("/api/index-preview", ctx -> {
-      PreviewRequest req = ctx.bodyAsClass(PreviewRequest.class);
+      // The validator turns an unparseable body into a 400, where bodyAsClass would 500.
+      PreviewRequest req = ctx.bodyValidator(PreviewRequest.class).get();
       ctx.json(indexStory.preview(req.text() == null ? "" : req.text(),
           req.vector() == null || req.vector()));
     });
@@ -192,16 +214,14 @@ public final class Main {
     app.exception(SearchPipeline.QueryTooLongException.class, (e, ctx) ->
         ctx.status(400).json(Map.of("error", e.getMessage())));
 
-    app.start(Config.port());
+    return app;
   }
 
   /**
    * Turns on HTTP basic auth when AUTH_USER and AUTH_PASS are both set. Enough to keep a
    * public demo from being crawled and burning CPU on reranking; put TLS in front of it.
    */
-  private static void requireAuthIfConfigured(Javalin app) {
-    String user = System.getenv("AUTH_USER");
-    String pass = System.getenv("AUTH_PASS");
+  private static void requireAuthIfConfigured(Javalin app, String user, String pass) {
     if (user == null || user.isBlank() || pass == null || pass.isBlank()) {
       System.out.println("auth: disabled (set AUTH_USER and AUTH_PASS to enable)");
       return;
@@ -247,7 +267,7 @@ public final class Main {
 
   private static SearchPipeline.Mode mode(String raw) {
     try {
-      return SearchPipeline.Mode.valueOf(raw.toUpperCase().replace("-", "_"));
+      return SearchPipeline.Mode.valueOf(raw.toUpperCase(java.util.Locale.ROOT).replace("-", "_"));
     } catch (IllegalArgumentException e) {
       throw new io.javalin.http.BadRequestResponse(
           "unknown mode '" + raw + "'; expected hybrid, bm25_only or dense_only");
@@ -255,10 +275,10 @@ public final class Main {
   }
 
   /** df, idf, total term frequency, and which documents contain the term. */
-  private static Map<String, Object> termInfo(DirectoryReader reader, IndexSearcher searcher,
+  private static Map<String, Object> termInfo(DirectoryReader reader, DemoAnalyzer analyzer,
                                               String rawTerm, int limit) throws IOException {
     // Analyze the input so "deficiency" finds the stemmed term "defici".
-    List<DemoAnalyzer.Token> analyzed = new DemoAnalyzer().analyze(Fields.CONTENT, rawTerm);
+    List<DemoAnalyzer.Token> analyzed = analyzer.analyze(Fields.CONTENT, rawTerm);
     String term = analyzed.isEmpty() ? rawTerm : analyzed.get(0).term();
 
     Term t = new Term(Fields.CONTENT, term);

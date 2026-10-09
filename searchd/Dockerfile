@@ -35,6 +35,7 @@ ENV DATA_ROOT=/data \
     DATASET=cqadupstack-unix \
     NLP_URL=http://nlp:8081 \
     PORT=8080 \
+    LISTEN_HOST=0.0.0.0 \
     JAVA_OPTS="-XX:MaxRAMPercentage=70"
 
 EXPOSE 8080
