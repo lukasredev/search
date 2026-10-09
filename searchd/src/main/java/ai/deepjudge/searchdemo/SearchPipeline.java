@@ -135,7 +135,9 @@ public final class SearchPipeline {
 
     // ---- stage 3: fusion --------------------------------------------------------
     List<Candidate> fused;
+    String fusedBy;
     if (!bm25Hits.isEmpty() && !denseHits.isEmpty()) {
+      fusedBy = "rrf";
       fused = RrfFusion.fuse(
           List.of(new RrfFusion.Input("bm25", bm25Hits), new RrfFusion.Input("dense", denseHits)),
           new RrfFusion.Params(req.rrfK(), req.fuseN()), trace);
@@ -143,14 +145,19 @@ public final class SearchPipeline {
       // Only one retriever ran, so there is nothing to fuse; carry it through so the
       // downstream stages and metrics still line up.
       List<Candidate> single = bm25Hits.isEmpty() ? denseHits : bm25Hits;
+      fusedBy = bm25Hits.isEmpty() ? "dense" : "bm25";
       fused = single.size() > req.fuseN() ? new ArrayList<>(single.subList(0, req.fuseN())) : single;
     }
 
     // ---- stage 4: rerank --------------------------------------------------------
     List<Candidate> finalRanking = fused;
+    // How many of the final ranking's head carry a cross-encoder score; the rest keep
+    // the score of the stage that ranked them.
+    int reranked = 0;
     if (req.rerank() && !fused.isEmpty()) {
       try {
         finalRanking = reranker.run(req.query(), fused, new RerankStage.Params(req.rerankN()), trace, docs);
+        reranked = Math.min(req.rerankN(), fused.size());
       } catch (NlpClient.NlpUnavailableException e) {
         warnings.add("reranking unavailable: " + e.getMessage());
       }
@@ -164,7 +171,7 @@ public final class SearchPipeline {
     response.put("query", req.query());
     response.put("dataset", dataset.name());
     response.put("qid", qid);
-    response.put("mode", req.mode().name().toLowerCase());
+    response.put("mode", req.mode().name().toLowerCase(java.util.Locale.ROOT));
     response.put("params", Trace.map(
         "k1", req.k1(), "b", req.b(), "bm25N", req.bm25N(), "denseN", req.denseN(),
         "efSearch", req.efSearch(), "rrfK", req.rrfK(), "fuseN", req.fuseN(),
@@ -176,9 +183,12 @@ public final class SearchPipeline {
     } else {
       // Production shape: just the answers. Showing this next to trace=true makes the
       // cost of all that instrumentation concrete.
+      // scoredBy, because past rerank_n the scores switch scale mid-list.
+      int rerankedHead = reranked;
       response.put("results", finalRanking.stream().limit(10)
           .map(c -> Trace.map("docId", c.docId(), "rank", c.rank(),
-              "score", Bm25Stage.round(c.score()))).toList());
+              "score", Bm25Stage.round(c.score()),
+              "scoredBy", c.rank() <= rerankedHead ? "rerank" : fusedBy)).toList());
     }
 
     response.put("eval", evaluate(qid, qrels, bm25Hits, denseHits, fused, finalRanking));

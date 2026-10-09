@@ -132,7 +132,9 @@ GET /api/search?q=...&mode=hybrid&k1=1.2&b=0.75&rrf_k=60&ef_search=100&rerank_n=
 
 returns `{query, qid, params, totalMs, stages[], eval, docs}` where each stage carries its
 `params`, `ms`, `detail` and full `results`. `trace=off` returns just the top 10 — show it
-next to the full trace to make the cost of instrumentation concrete.
+next to the full trace to make the cost of instrumentation concrete. Each of those results
+names the stage its score came from in `scoredBy`: with `rerank_n` below 10, the ones past
+the reranked head keep their fusion score.
 
 | endpoint | what it gives you |
 |---|---|

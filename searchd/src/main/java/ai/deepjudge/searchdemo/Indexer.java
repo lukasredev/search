@@ -242,6 +242,11 @@ public final class Indexer {
       for (int i = start; i < end; i++) batch.add(docs.get(i).content());
 
       NlpClient.EmbedResult result = nlp.embed(batch);
+      if (result.vectors() == null || result.vectors().length != batch.size()) {
+        throw new NlpClient.NlpUnavailableException("nlp /embed returned "
+            + (result.vectors() == null ? "no" : result.vectors().length) + " vectors for "
+            + batch.size() + " docs");
+      }
       for (int i = start; i < end; i++) out[i] = result.vectors()[i - start];
 
       double elapsed = (System.nanoTime() - t0) / 1e9;

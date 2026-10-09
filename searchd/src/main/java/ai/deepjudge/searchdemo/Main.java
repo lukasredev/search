@@ -304,7 +304,9 @@ public final class Main {
     double idf = Math.log(1 + (numDocs - df + 0.5) / (df + 0.5));
 
     List<Map<String, Object>> docs = new ArrayList<>();
+    var stored = reader.storedFields();
     for (var leaf : reader.leaves()) {
+      if (docs.size() >= limit) break;
       Terms terms = leaf.reader().terms(Fields.CONTENT);
       if (terms == null) continue;
       TermsEnum te = terms.iterator();
@@ -313,7 +315,7 @@ public final class Main {
       while (postings.nextDoc() != DocIdSetIterator.NO_MORE_DOCS && docs.size() < limit) {
         int global = postings.docID() + leaf.docBase;
         docs.add(Trace.map(
-            "docId", reader.storedFields().document(global).get(Fields.ID),
+            "docId", stored.document(global).get(Fields.ID),
             "tf", postings.freq(),
             "luceneDoc", global));
       }

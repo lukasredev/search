@@ -6,6 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -71,8 +72,12 @@ public final class NlpClient {
           .build();
       HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
       if (res.statusCode() != 200) {
+        // Capped: the message ends up in API responses and UI banners, and an error page
+        // from a proxy in front of the sidecar can be large.
+        String detail = new String(res.body(), StandardCharsets.UTF_8);
+        if (detail.length() > 500) detail = detail.substring(0, 500) + "…";
         throw new NlpUnavailableException(
-            "nlp " + path + " returned " + res.statusCode() + ": " + new String(res.body()));
+            "nlp " + path + " returned " + res.statusCode() + ": " + detail);
       }
       return JSON.readValue(res.body(), type);
     } catch (IOException e) {

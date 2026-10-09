@@ -57,7 +57,7 @@ def download(name: str, split: str, raw: pathlib.Path):
 def normalize(split: str, open_file, out: pathlib.Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     n = 0
-    with open_file("corpus.jsonl") as src, open(out / "corpus.jsonl", "w") as dst:
+    with open_file("corpus.jsonl") as src, open(out / "corpus.jsonl", "w", encoding="utf-8") as dst:
         for line in src:
             d = json.loads(line)
             # BEIR uses "_id"; keep only the three fields the indexer cares about.
@@ -71,7 +71,7 @@ def normalize(split: str, open_file, out: pathlib.Path) -> None:
 
     # qrels first, so we can emit only the queries that actually have judgments.
     judged, pairs = set(), 0
-    with open_file(f"qrels/{split}.tsv") as src, open(out / "qrels.tsv", "w") as dst:
+    with open_file(f"qrels/{split}.tsv") as src, open(out / "qrels.tsv", "w", encoding="utf-8") as dst:
         next(src)  # header: query-id\tcorpus-id\tscore
         for line in src:
             qid, docid, rel = line.decode().rstrip("\n").split("\t")[:3]
@@ -81,7 +81,7 @@ def normalize(split: str, open_file, out: pathlib.Path) -> None:
     print(f"  qrels.tsv      {pairs:>7} judgments over {len(judged)} queries")
 
     q = 0
-    with open_file("queries.jsonl") as src, open(out / "queries.tsv", "w") as dst:
+    with open_file("queries.jsonl") as src, open(out / "queries.tsv", "w", encoding="utf-8") as dst:
         for line in src:
             d = json.loads(line)
             if d["_id"] in judged:

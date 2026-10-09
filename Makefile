@@ -16,7 +16,7 @@ RUNJAR     := searchd/target/searchd-running.jar
 DATASET    ?= cqadupstack-unix
 export JAVA_HOME
 
-.PHONY: help data build index serve nlp bench clean reindex demos test test-live \
+.PHONY: help data build index serve nlp bench bench-fast clean reindex demos test test-live \
         docker-build docker-setup docker-up docker-down docker-logs \
         docker-bench docker-demos
 
@@ -27,6 +27,7 @@ help:
 	@echo "make nlp             run the embedding/rerank sidecar on :8081"
 	@echo "make serve           run the search API + UI on :8080"
 	@echo "make bench           run the full query set, write benchmark.json"
+	@echo "make bench-fast      the same without reranking, write benchmark-norerank.json"
 	@echo "make reindex         rebuild the index reusing cached embeddings"
 	@echo "make demos           regenerate curated example queries (TOPIC=--topic cs)"
 	@echo "make test            unit + API tests, Java and Python (no models, no index)"

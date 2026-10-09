@@ -111,7 +111,21 @@ class SearchPipelineTest {
     var results = (List<Map<String, Object>>) res.get("results");
     assertTrue(results.size() <= 10 && !results.isEmpty());
     assertEquals("d1", results.get(0).get("docId"));
-    assertEquals(List.of("docId", "rank", "score"), List.copyOf(results.get(0).keySet()));
+    assertEquals(List.of("docId", "rank", "score", "scoredBy"), List.copyOf(results.get(0).keySet()));
+    assertEquals("rerank", results.get(0).get("scoredBy"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void traceOffSaysWhichStageScoredEachResult() throws Exception {
+    Request d = Request.of(TestIndex.Q_VITAMIN);
+    var res = idx.pipeline().search(new Request(d.query(), Mode.HYBRID, false, false, true,
+        d.k1(), d.b(), d.bm25N(), d.denseN(), d.efSearch(), d.rrfK(), d.fuseN(), 1));
+    var results = (List<Map<String, Object>>) res.get("results");
+    assertTrue(results.size() > 1);
+    assertEquals("rerank", results.get(0).get("scoredBy"));
+    assertTrue(results.subList(1, results.size()).stream()
+        .allMatch(r -> "rrf".equals(r.get("scoredBy"))));
   }
 
   @Test

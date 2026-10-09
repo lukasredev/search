@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -26,11 +28,15 @@ public final class Dataset {
   private final String name;
   private final Map<String, String> queries;
   private final Map<String, Map<String, Integer>> qrels;
+  /** Normalized query text -> qid, so every search does not scan 10k Quora queries. */
+  private final Map<String, String> qidByText = new HashMap<>();
 
   private Dataset(String name, Map<String, String> queries, Map<String, Map<String, Integer>> qrels) {
     this.name = name;
     this.queries = queries;
     this.qrels = qrels;
+    // putIfAbsent: if two queries share a text, the first in file order wins.
+    queries.forEach((qid, text) -> qidByText.putIfAbsent(normalize(text), qid));
   }
 
   public String name() { return name; }
@@ -47,11 +53,11 @@ public final class Dataset {
 
   /** Looks up the qid of a query whose text matches exactly, so eval can light up for free. */
   public String qidForText(String text) {
-    String needle = text.strip();
-    for (Map.Entry<String, String> e : queries.entrySet()) {
-      if (e.getValue().equalsIgnoreCase(needle)) return e.getKey();
-    }
-    return null;
+    return qidByText.get(normalize(text));
+  }
+
+  private static String normalize(String text) {
+    return text.strip().toLowerCase(Locale.ROOT);
   }
 
   public static Dataset load(Path dir) throws IOException {

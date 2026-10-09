@@ -87,6 +87,13 @@ public final class RerankStage {
           "truncated", item.truncated()));
     }
 
+    // Candidates past the top n keep their fused order behind the reranked head. Dropping
+    // them would make recall@100 after this stage collapse to recall@n, a loss the
+    // reranker did not cause.
+    for (int i = pool.size(); i < input.size(); i++) {
+      ranked.add(input.get(i).withRank(i + 1));
+    }
+
     trace.add("rerank", ms,
         Trace.map("n", params.n(), "model", res.model(), "maxLength", res.max_length(),
             "scored", pool.size()),

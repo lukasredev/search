@@ -157,9 +157,11 @@ def rerank(req: RerankRequest) -> RerankResponse:
     tok = m.tokenizer
     q_len = len(tok(req.query, add_special_tokens=False)["input_ids"])
     budget = MAX_LEN - q_len - 3  # [CLS] q [SEP] d [SEP]
+    # One batched call: the fast tokenizers do the whole list in Rust at once.
+    doc_ids = tok(req.docs, add_special_tokens=False)["input_ids"]
     items = []
-    for doc, score in zip(req.docs, scores):
-        n = len(tok(doc, add_special_tokens=False)["input_ids"])
+    for ids, score in zip(doc_ids, scores):
+        n = len(ids)
         items.append(RerankItem(score=float(score), doc_tokens=n, truncated=n > budget))
 
     return RerankResponse(model=RERANK_MODEL, max_length=MAX_LEN, ms=round(ms, 2), items=items)

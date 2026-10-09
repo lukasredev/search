@@ -15,7 +15,10 @@ import app  # noqa: E402
 
 
 class FakeTokenizer:
+    # Like a Hugging Face tokenizer: a string gives one id list, a list gives one per item.
     def __call__(self, text, add_special_tokens=False):
+        if isinstance(text, list):
+            return {"input_ids": [t.split() for t in text]}
         return {"input_ids": text.split()}
 
 

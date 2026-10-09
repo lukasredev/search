@@ -155,7 +155,11 @@ class StagesTest {
     Trace trace = new Trace();
     var out = new RerankStage(idx.nlp.client()).run("benchmark", input,
         new RerankStage.Params(2), trace, docs);
-    assertEquals(2, out.size());
+    // Only two were scored, but the third is carried through behind them, unmoved.
+    assertEquals(2, trace.stages().get(0).results().size());
+    assertEquals(3, out.size());
+    assertEquals("d2", out.get(2).docId());
+    assertEquals(3, out.get(2).rank());
     assertEquals(1, trace.stages().get(0).detail().get("truncatedDocs"));
   }
 
