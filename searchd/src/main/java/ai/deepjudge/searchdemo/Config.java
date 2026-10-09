@@ -1,6 +1,7 @@
 package ai.deepjudge.searchdemo;
 
 import java.nio.file.Path;
+import java.time.Duration;
 
 /** Environment-driven configuration. Defaults are the local dev layout. */
 public final class Config {
@@ -14,6 +15,16 @@ public final class Config {
   public static String nlpUrl() { return env("NLP_URL", "http://localhost:8081"); }
 
   public static int port() { return Integer.parseInt(env("PORT", "8080")); }
+
+  /** A request running longer than this fails /livez. NLP calls time out after 2 min. */
+  public static Duration stuckRequestAfter() {
+    return Duration.ofSeconds(Long.parseLong(env("STUCK_REQUEST_SECONDS", "600")));
+  }
+
+  /** How long a SIGTERM waits for in-flight requests. Keep under the pod's grace period. */
+  public static Duration shutdownGrace() {
+    return Duration.ofSeconds(Long.parseLong(env("SHUTDOWN_GRACE_SECONDS", "20")));
+  }
 
   /** Directory of built UI assets to serve, or null to skip (dev uses the Vite server). */
   public static String uiDir() { return System.getenv("UI_DIR"); }

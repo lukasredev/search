@@ -5,10 +5,12 @@ endpoint each. All the search logic lives in the Java service — this is just "
 ML models", which is exactly the boundary we want to draw during the talk.
 """
 import os
+import threading
 import time
+from contextlib import asynccontextmanager
 
 import torch
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from pydantic import BaseModel
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
@@ -18,22 +20,42 @@ MAX_LEN = int(os.environ.get("RERANK_MAX_LEN", "512"))
 
 torch.set_num_threads(int(os.environ.get("TORCH_THREADS", "4")))
 
-app = FastAPI(title="search-demo nlp")
 _models: dict[str, object] = {}
+_load_lock = threading.Lock()
+_ready = threading.Event()
 
 
 def embedder() -> SentenceTransformer:
-    if "embed" not in _models:
-        print(f"loading {EMBED_MODEL}", flush=True)
-        _models["embed"] = SentenceTransformer(EMBED_MODEL, device="cpu")
+    with _load_lock:
+        if "embed" not in _models:
+            print(f"loading {EMBED_MODEL}", flush=True)
+            _models["embed"] = SentenceTransformer(EMBED_MODEL, device="cpu")
     return _models["embed"]
 
 
 def reranker() -> CrossEncoder:
-    if "rerank" not in _models:
-        print(f"loading {RERANK_MODEL}", flush=True)
-        _models["rerank"] = CrossEncoder(RERANK_MODEL, max_length=MAX_LEN, device="cpu")
+    with _load_lock:
+        if "rerank" not in _models:
+            print(f"loading {RERANK_MODEL}", flush=True)
+            _models["rerank"] = CrossEncoder(RERANK_MODEL, max_length=MAX_LEN, device="cpu")
     return _models["rerank"]
+
+
+def _load_and_warm() -> None:
+    # In the background, so /livez answers while the weights load and only /readyz waits.
+    embedder().encode(["warmup"], normalize_embeddings=True)
+    reranker().predict([("warmup", "warmup")])
+    _ready.set()
+    print("models loaded, ready", flush=True)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    threading.Thread(target=_load_and_warm, name="load-models", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="search-demo nlp", lifespan=lifespan)
 
 
 class EmbedRequest(BaseModel):
@@ -65,6 +87,20 @@ class RerankResponse(BaseModel):
     max_length: int
     ms: float
     items: list[RerankItem]
+
+
+# Kubernetes probes. Async on purpose: they run on the event loop, so a pod busy embedding
+# in the thread pool still answers them instead of looking dead and being restarted.
+@app.get("/livez")
+async def livez() -> dict:
+    return {"ok": True}
+
+
+@app.get("/readyz")
+async def readyz(response: Response) -> dict:
+    if not _ready.is_set():
+        response.status_code = 503
+    return {"ok": _ready.is_set(), "loaded": sorted(_models)}
 
 
 @app.get("/health")

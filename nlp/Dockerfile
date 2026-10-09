@@ -45,8 +45,10 @@ ENV EMBED_MODEL=${EMBED_MODEL} \
     NLP_PORT=8081
 
 EXPOSE 8081
-USER app
+# Numeric, so Kubernetes can enforce runAsNonRoot; uid 10001 is the "app" user above.
+USER 10001
+# Kubernetes ignores this and uses its own probes: /livez and /readyz, see docs/deploy.md.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=6 \
-  CMD curl -fsS "http://127.0.0.1:${NLP_PORT}/health" || exit 1
+  CMD curl -fsS "http://127.0.0.1:${NLP_PORT}/readyz" || exit 1
 
 CMD ["sh","-c","exec uvicorn app:app --host 0.0.0.0 --port ${NLP_PORT}"]

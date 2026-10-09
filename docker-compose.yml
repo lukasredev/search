@@ -58,7 +58,9 @@ services:
     volumes:
       - ./scripts:/work/scripts:ro
       - data:/work/data
-    entrypoint: ["python3", "scripts/fetch_dataset.py"]
+    # Runs as root, but the indexer and bench jobs run as the image's unprivileged user
+    # (uid 10001, see searchd/Dockerfile) and must write the index and embedding cache.
+    entrypoint: ["sh", "-c", "python3 scripts/fetch_dataset.py \"$$@\" && chown -R 10001:10001 data", "fetch"]
     command: ["cqadupstack-unix"]
 
   indexer:
@@ -81,6 +83,9 @@ services:
       - data:/data
     entrypoint: ["entrypoint", "index"]
     command: []
+    # The image's health check probes the web server, which a one-off job never starts.
+    healthcheck:
+      disable: true
     mem_limit: ${INDEX_MEM:-6g}
 
   bench:
@@ -100,6 +105,8 @@ services:
     # run --rm bench <dataset> [maxQueries] [rerank|norerank]
     entrypoint: ["entrypoint", "bench"]
     command: []
+    healthcheck:
+      disable: true
 
   demos:
     profiles: ["setup"]

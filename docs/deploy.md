@@ -4,11 +4,6 @@ Two containers. `searchd` holds the Lucene index, the retrieval pipeline and the
 `nlp` holds the two transformer models. Datasets and the index live in one named volume,
 so rebuilding images never costs you a re-index.
 
-> **Not verified on this machine.** The box these files were written on has no Docker and
-> no root, so the Dockerfiles and compose file are written but have never been built. The
-> Java service, the pipeline and the UI are all verified natively. Treat the first
-> `docker compose build` as the real test — see [Checking it works](#checking-it-works).
-
 ## First run
 
 ```bash
@@ -117,6 +112,46 @@ curl -fsS "localhost:8080/api/search?q=vitamin+d&rerank=false" | jq '.stages[].n
 `/api/health` reports the sidecar's status too, so one call tells you whether both halves
 are up. If `searchd` exits immediately it will say so: an empty volume produces a message
 telling you to run the indexer, not a stack trace.
+
+## Kubernetes
+
+The two images run unchanged on Kubernetes. Compose's `HEALTHCHECK`s are ignored there;
+use these probes instead, on both containers (`searchd` on 8080, `nlp` on 8081):
+
+| path | means | fails when |
+|---|---|---|
+| `/livez` | restart me | `searchd`: a request has run longer than `STUCK_REQUEST_SECONDS` (600). `nlp`: the process is not answering |
+| `/readyz` | send me traffic | `searchd`: the index cannot be searched. `nlp`: models still loading (a few seconds) |
+
+```yaml
+livenessProbe:  { httpGet: { path: /livez,  port: 8080 }, periodSeconds: 20, failureThreshold: 3 }
+readinessProbe: { httpGet: { path: /readyz, port: 8080 }, periodSeconds: 5 }
+```
+
+Neither `searchd` probe depends on `nlp`: without it, search degrades to BM25 with a warning,
+so an `nlp` outage should not take `searchd` out of service or restart it. Both probe paths
+skip basic auth, so they keep working with `AUTH_USER`/`AUTH_PASS` set.
+
+The stuck-request check exists because of one known failure: if a request handler and its
+exception handler both throw, Javalin 6.4 retries forever and the thread spins at 100% CPU,
+while every endpoint, `/readyz` included, keeps answering. Liveness restarts the pod instead.
+
+What else the images expect:
+
+- **Data** — one `ReadWriteOnce` volume at `/data`, mounted read-only in `searchd`. Populate
+  it with two Jobs running the same commands as the compose `fetch` and `indexer` services
+  (the indexer is `entrypoint index <dataset>` in the `searchd` image). The indexer also
+  copies the hand-picked example queries and benchmark results into the index directory.
+- **Security** — both images run as uid 10001, so `runAsNonRoot: true` works. Set
+  `fsGroup: 10001` so the volume is writable by the indexer; the compose `fetch` job does a
+  `chown` instead.
+- **Shutdown** — on SIGTERM, `searchd` stops accepting connections and waits up to
+  `SHUTDOWN_GRACE_SECONDS` (20) for in-flight searches; keep `terminationGracePeriodSeconds`
+  above that. A short `preStop` sleep (5 s) lets the endpoint be removed before it stops.
+- **Resources** — `searchd` sizes its heap from the container limit (`MaxRAMPercentage=70`),
+  so set a memory limit. `nlp` is CPU-bound: a rerank takes 3–4 s on 4 cores, so give it
+  `TORCH_THREADS` worth of CPU and scale it out rather than up.
+- **Network** — `nlp` needs no ingress; point `searchd` at it with `NLP_URL`.
 
 ## Changing models
 

@@ -1,4 +1,7 @@
 data/
+# ...except the curated files next to each index, which the image ships as defaults.
+!data/index/*/demo_queries.json
+!data/index/*/benchmark.json
 **/target/
 **/.venv/
 **/node_modules/

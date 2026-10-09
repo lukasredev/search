@@ -23,6 +23,9 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /src/target/searchd.jar /app/searchd.jar
 COPY ui /app/ui
+# The hand-picked example queries and benchmark results for each dataset. The data
+# volume starts empty, so the indexer copies these next to the index it builds.
+COPY data/index /app/defaults
 COPY searchd/docker-entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/entrypoint
 
@@ -35,9 +38,11 @@ ENV DATA_ROOT=/data \
     JAVA_OPTS="-XX:MaxRAMPercentage=70"
 
 EXPOSE 8080
-USER app
+# Numeric, so Kubernetes can enforce runAsNonRoot; uid 10001 is the "app" user above.
+USER 10001
+# Kubernetes ignores this and uses its own probes: /livez and /readyz, see docs/deploy.md.
 HEALTHCHECK --interval=15s --timeout=4s --start-period=40s --retries=5 \
-  CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
+  CMD curl -fsS "http://127.0.0.1:${PORT}/readyz" || exit 1
 
 ENTRYPOINT ["entrypoint"]
 CMD ["serve"]

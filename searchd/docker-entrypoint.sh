@@ -15,6 +15,13 @@ case "$cmd" in
       ai.deepjudge.searchdemo.Main "$@"
     ;;
   index)
+    # Seed the curated example queries and benchmark results shipped in the image,
+    # without overwriting ones regenerated in the volume. Lucene leaves them alone.
+    dataset="${1:-$DATASET}"
+    if [ -d "/app/defaults/$dataset" ]; then
+      mkdir -p "$INDEX_ROOT/$dataset"
+      cp -n "/app/defaults/$dataset"/*.json "$INDEX_ROOT/$dataset/" 2>/dev/null || true
+    fi
     # Building the HNSW graph holds every vector on the heap at once, so give the
     # indexer more room than the server needs.
     exec java $VECTOR_FLAGS ${INDEX_JAVA_OPTS:--XX:MaxRAMPercentage=80} \

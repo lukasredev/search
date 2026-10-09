@@ -71,8 +71,12 @@ public final class Main {
         config.staticFiles.add(uiDir, io.javalin.http.staticfiles.Location.EXTERNAL);
         config.spaRoot.addFile("/", uiDir + "/index.html", io.javalin.http.staticfiles.Location.EXTERNAL);
       }
+      // On SIGTERM, finish in-flight searches (a rerank takes seconds) before exiting.
+      config.jetty.modifyServer(server -> server.setStopTimeout(Config.shutdownGrace().toMillis()));
     });
+    Runtime.getRuntime().addShutdownHook(new Thread(app::stop, "shutdown"));
 
+    new Probes(Config.stuckRequestAfter()).register(app, searcher, datasetName);
     requireAuthIfConfigured(app);
 
     app.get("/api/health", ctx -> {
@@ -192,6 +196,7 @@ public final class Main {
         .getBytes(StandardCharsets.UTF_8);
 
     app.before(ctx -> {
+      if (Probes.PATHS.contains(ctx.path())) return;
       String got = ctx.header("Authorization");
       // Constant-time compare so the header cannot be guessed byte by byte.
       if (got == null
