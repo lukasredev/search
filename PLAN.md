@@ -5,16 +5,20 @@ indexing, BM25 candidate retrieval, dense (semantic) retrieval, RRF fusion, cros
 reranking — with per-stage traces, score math, rank-movement visuals and per-stage eval metrics.
 Audience: undergraduates. Primary artifact: a live demo driven from a browser during a talk.
 
+> **Status, 2026-10-09: built.** This is the plan the project was built from, kept for its
+> reasoning. Where the build went another way it says so inline; the README describes what
+> exists, and [docs/deploy.md](docs/deploy.md) how to run it.
+
 ---
 
 ## 1. Architecture
 
 ```
                  ┌──────────────────────────── browser ────────────────────────────┐
-                 │  React UI: query box · pipeline waterfall · 4-stage rank board  │
-                 │  BM25 explain tree · term inspector · RRF math · rerank deltas  │
+                 │  one static page: six chapters · 4-stage rank board · timings   │
+                 │  BM25 explain · analyzer · RRF math · rerank deltas · eval      │
                  └───────────────────────────────┬─────────────────────────────────┘
-                                                 │ GET /api/search?q=...&trace=full
+                                                 │ GET /api/search?q=...
 ┌────────────────────────────────────────────────▼──────────────────────────────────┐
 │ searchd  (Java 21 · Lucene 10.4 · Javalin)        — single JVM, serves UI too     │
 │                                                                                    │
@@ -24,7 +28,7 @@ Audience: undergraduates. Primary artifact: a live demo driven from a browser du
 │  stage 3  RRF fuse  -> 50     1/(k+rank) per list, k configurable           │      │
 │  stage 4  rerank    -> 10     cross-encoder scores     ◄── rerank(q,docs) ──┤      │
 │                                                                              │      │
-│  every stage appends to one StageTrace -> returned verbatim in the response  │      │
+│  every stage appends to one Trace -> returned verbatim in the response       │      │
 └──────────────────────────────────────────────────────────────────────────────┼──────┘
                       ┌───────────────────────────────────────────────────────┘
                       ▼
@@ -48,21 +52,27 @@ search engine" vs "the ML models it calls".
 - **Python sidecar for the models.** `sentence-transformers` is what students will Google;
   swapping models is a one-line config change. (Alternative: all-Java via ONNX Runtime / DJL —
   removes a container but makes model swapping painful. Keep as a documented variant.)
-- **No separate frontend container.** Vite builds to static assets served by Javalin, so prod
-  is one JVM. `npm run dev` proxies to the JVM during development.
+- **No separate frontend container.** The UI is one HTML file with no build step (the planned
+  Vite + React app was never needed), served by Javalin, so prod is one JVM.
 
 ---
 
 ## 2. Data
 
-### DECIDED: SciFact (default) + NFCorpus. Robust04 dropped.
+### DECIDED: CQADupStack unix (default), SciFact, NFCorpus, Quora. Robust04 dropped.
+
+Originally SciFact was the default. CQADupStack unix replaced it because a computer science
+audience recognises its questions and every stage visibly changes the results on it; Quora was
+added as the corpus students already know. Both are in the table below.
 
 | dataset | docs | queries | qrels | license | why |
 |---|---|---|---|---|---|
+| CQADupStack unix | 47k | 1,072 | yes | free (CC BY-SA) | Unix & Linux Stack Exchange; closed-as-duplicate questions are the judgments |
 | SciFact | 5.2k | 300 | yes | free (CC) | tiny; claim-style queries → excellent lexical-vs-semantic contrasts |
 | NFCorpus | 3.6k | 323 | yes | free | consumer-health wording vs medical jargon = textbook vocabulary mismatch |
 | TREC-COVID | 171k | 50 | yes | free | shows index size / HNSW build cost at a realistic scale |
 | MS MARCO dev slice | configurable | 6.9k | yes (sparse) | free | web-like short queries if you want "looks like Google" |
+| Quora | 523k | 10k (1k benchmarked) | yes | free | duplicate questions; scale, and a corpus students recognise |
 
 **Robust04: dropped (decided 2026-10-07).** Its corpus is TREC Disks 4&5, which require a signed
 NIST/LDC agreement and are not downloadable, so it could never ship in an image or go online. Its
@@ -79,7 +89,8 @@ data/<name>/corpus.jsonl    {"id": "...", "title": "...", "text": "..."}
 data/<name>/queries.tsv     qid \t query text
 data/<name>/qrels.tsv       qid \t docid \t relevance
 ```
-A `scripts/fetch_dataset.py` (uses `ir_datasets`) writes those. The Java indexer only ever reads
+`scripts/fetch_dataset.py` writes those, using only the standard library: BEIR's zips, and
+the MTEB mirror on Hugging Face for CQADupStack, which BEIR only ships as one 5 GB zip. The Java indexer only ever reads
 this format and knows nothing about BEIR.
 
 ---
@@ -88,27 +99,30 @@ this format and knows nothing about BEIR.
 
 `indexer` is a single readable Java class, deliberately linear so it can be shown on a slide:
 
-1. **Analyzer** — a custom `Analyzer` built from `StandardTokenizer` → `LowerCaseFilter` →
-   `EnglishPossessiveFilter` → `StopFilter` → `PorterStemFilter`. Exposed to the UI so the
+1. **Analyzer** — a custom `Analyzer` built from `StandardTokenizer` → `EnglishPossessiveFilter`
+   → `LowerCaseFilter` → `StopFilter` → `PorterStemFilter`. Exposed to the UI so the
    analysis chain can be replayed token-by-token on arbitrary text.
-2. **Fields per doc** — `id` (`StringField`, stored) · `title`, `text` (`TextField`, indexed, with
-   term vectors + positions so we can do posting/term inspection and highlighting) ·
-   `body_stored` (`StoredField`, for the reranker and snippets) ·
-   `vector` (`KnnFloatVectorField`, 384-d, `COSINE`).
-3. **Embedding pass** — batch of 64 doc texts → `POST /embed` → float[384]. Progress logged.
-   SciFact on CPU: ~1–2 min. TREC-COVID: ~25–40 min (so cache the index in a volume / bake it).
+2. **Fields per doc** — `id` (`StringField`, stored) · `content` (title + text, analyzed, not
+   stored, with term vectors, positions and offsets for posting/term inspection) · `title`,
+   `text` (`StoredField`, for display and the reranker) · `vector` (`KnnFloatVectorField`,
+   384-d, `COSINE`).
+3. **Embedding pass** — batches of 256 doc texts (`EMBED_BATCH`) → `POST /embed` → float[384].
+   Cached in `data/<name>/vectors.f32`, with `vectors.f32.json` recording the model, so
+   re-indexing takes seconds and a model change re-embeds. CPU: SciFact ~2 min, CQADupStack unix
+   ~15 min, Quora ~25 min.
 4. **Commit + force-merge to 1 segment** for a stable, inspectable index.
 5. **Write `index_stats.json`** — doc count, term count, per-file byte sizes grouped into
    *inverted index* vs *HNSW graph* vs *stored fields*. Directly becomes the "what does semantic
    search cost you?" slide.
 
-Run it as `docker compose run --rm indexer scifact`, output to a named volume.
+Run it as `docker compose --profile setup run --rm indexer cqadupstack-unix`, output to a named
+volume.
 
 ---
 
 ## 4. The API contract (one call returns the whole pipeline)
 
-`GET /api/search?q=...&trace=full&k1=1.2&b=0.75&rrf_k=60&bm25_n=100&dense_n=100&fuse_n=50&rerank_n=10`
+`GET /api/search?q=...&k1=1.2&b=0.75&rrf_k=60&bm25_n=100&dense_n=100&fuse_n=50&rerank_n=10`
 
 ```jsonc
 {
@@ -144,19 +158,28 @@ Run it as `docker compose run --rm indexer scifact`, output to a named volume.
 }
 ```
 
+The example is the plan's sketch; the real payload is close to it and documented in the README.
+
 Design rule: **the UI invents nothing.** Every number shown on screen is in this payload, so
 "open the Network tab" is itself a demo step. `trace=off` returns just the final 10 — useful for
 showing the production-vs-debug cost difference.
 
 Other endpoints: `/api/analyze?text=`, `/api/term?t=` (df, total tf, idf, containing docs),
 `/api/doc/{id}`, `/api/stats` (index_stats.json), `/api/benchmark` (batch eval, cached),
-`/api/queries` (benchmark queries + curated demo queries).
+`/api/queries` (benchmark queries), `/api/demo-queries` (curated examples). Built later:
+`POST /api/index-preview` (dry-run indexing of any text) and `/livez`, `/readyz`.
 
 ---
 
 ## 5. The insight UI — the actual deliverable
 
-Single page, query box on top, stage panels below. Ordered by talk value:
+Single page, query box on top, stage panels below. Ordered by talk value.
+
+What shipped: 1 without the connector lines (rank deltas are drawn per document instead), 2, 3,
+the analyzer chain of 4 plus a chapter that indexes any pasted text, 5, the `efSearch` and
+`visitedCount` part of 6, the rank deltas and truncation flags of 7, 8, 9 and 10. Not built: the
+connectors, the term-click posting list (the API has it: `/api/term`), the PCA scatter and the
+reranker scatter.
 
 1. **Rank board** (the money shot) — four vertical columns BM25 · Dense · RRF · Reranked, each a
    ranked list of doc cards. Bezier connector lines between columns, colored by movement:
@@ -195,33 +218,39 @@ Single page, query box on top, stage panels below. Ordered by talk value:
     sitting at rank 23 after fusion, pulled to 1). Verifying these against the real index is a
     build task, not an afterthought — the talk depends on them.
 
-Design: dark-first, high contrast, large type (projector-legible), no hover-only information
-(nothing on a projector is hoverable from the back row), keyboard-driven, and a `?preset=` URL
-param so each slide can deep-link a prepared state.
+Design: high contrast, large type (projector-legible), no hover-only information (nothing on a
+projector is hoverable from the back row), keyboard-driven, and deep links so each slide can
+point at a prepared state. As built: light, to match the slide deck, and organised as six
+chapters, one per stage, each with a `#chapter` URL instead of a `?preset=` param.
 
 ---
 
 ## 6. Repo layout
 
+As built:
+
 ```
 search/
-├─ docker-compose.yml
-├─ Makefile                      # make index DATASET=scifact / make up / make bench
-├─ searchd/                      # Java 21, Maven
-│  ├─ pom.xml                    # lucene-core, -analysis-common, -queryparser, -highlighter, javalin, jackson
-│  └─ src/main/java/.../
+├─ docker-compose.yml            # nlp + searchd; fetch / indexer / bench / demos as setup jobs
+├─ Makefile                      # local: make data / index / serve / bench; docker-* targets
+├─ searchd/                      # Java 21, Maven: lucene-core, -analysis-common, javalin, jackson
+│  ├─ Dockerfile  docker-entrypoint.sh   # one image: serve | index | bench
+│  └─ src/main/java/ai/deepjudge/searchdemo/
+│     ├─ Main.java               # Javalin routes, basic auth, static UI
 │     ├─ Indexer.java            # linear, slide-readable
+│     ├─ IndexStory.java         # dry-run indexing for the first chapter
 │     ├─ DemoAnalyzer.java
 │     ├─ SearchPipeline.java     # the 5 stages, one method each
 │     ├─ Bm25Stage.java  DenseStage.java  RrfFusion.java  RerankStage.java
-│     ├─ StageTrace.java         # the trace object
-│     ├─ Evaluator.java          # nDCG@10, Recall@k, MRR from qrels
+│     ├─ Trace.java              # the trace object
+│     ├─ Evaluator.java  Benchmark.java
 │     ├─ NlpClient.java          # HTTP to the python sidecar
-│     └─ Api.java                # Javalin routes + static UI
-├─ nlp/                          # FastAPI, Dockerfile, models baked into image
-├─ ui/                           # Vite + React + TS + Tailwind
-├─ scripts/fetch_dataset.py      # ir_datasets -> corpus.jsonl/queries.tsv/qrels.tsv
-└─ data/                         # gitignored; datasets + index (volume)
+│     └─ Probes.java             # /livez, /readyz
+├─ nlp/                          # FastAPI, Dockerfile, pinned models baked into the image
+├─ ui/index.html                 # the whole UI, plus its fonts; no build step
+├─ scripts/                      # fetch_dataset.py (stdlib only), find_demo_queries.py
+├─ docs/                         # deploy.md, reranker-findings.md
+└─ data/                         # gitignored except each index's demo_queries.json, benchmark.json
 ```
 
 ---
@@ -235,9 +264,9 @@ search/
 | **P2** ✅ dense | nlp sidecar, cached embedding pass, `KnnFloatVectorField` + instrumented leaf-level HNSW search | **nDCG@10 = 0.645**, exactly the published all-MiniLM-L6-v2 figure ✓ |
 | **P3** ✅ RRF | fusion stage, per-list contributions and the arithmetic in the trace | **nDCG@10 = 0.720 > both parents** ✓ |
 | **P4** ✅ rerank | cross-encoder stage, rank deltas, truncation flags; plain UI | ~55 ms/doc; **rerank makes SciFact worse (0.720 → 0.693)** — reproduced across 4 models and 3 pool depths, see `docs/reranker-findings.md` |
-| **P5** insight UI | panels 1–7 above | walk every panel against 3 real queries |
-| **P6** eval | `/api/benchmark` batch run + cached stage×metric table, panel 8 | full-300-query table reproducible |
-| **P7** ship | Dockerfiles, compose, prebaked index, README with a talk runbook; curated demo queries verified | `docker compose up` on a clean machine → working demo |
+| **P5** ✅ insight UI | six chapters, one per stage; the panels listed as shipped in §5 | every chapter walked with the four pinned example queries |
+| **P6** ✅ eval | `make bench` writes `benchmark.json` beside the index, shown in the last chapter | full query sets for all four corpora; see README |
+| **P7** ✅ ship | Dockerfiles, compose, Kubernetes probes, deploy guide, curated demo queries. The index lives in a volume built by a setup job rather than baked into the image | `docker compose up` → working demo |
 
 Order is deliberately "working end-to-end at every phase": after P1 you already have a demoable
 search engine. If time runs short, the talk still works at P4 with a plainer UI.
@@ -246,45 +275,43 @@ search engine. If time runs short, the talk still works at P4 with a plainer UI.
 
 ## 8. Running it
 
-**Locally (your machine, Docker):**
-```
-make index DATASET=scifact     # one-shot indexer container, writes to the volume
-make up                        # searchd :8080 (UI + API) + nlp :8081
-```
-First run pulls ~1.5 GB of model weights into the `nlp` image layer; after that it is offline-capable.
+See the README for local development and [docs/deploy.md](docs/deploy.md) for Docker and
+Kubernetes. In short:
 
-**Online:** same compose on one small VM (Hetzner CX22 / Fly.io), ~2 vCPU / 4 GB is enough for
-SciFact with CPU models. Bake the prebuilt index into the `searchd` image so the instance needs no
-index build. Put HTTP basic auth or a Cloudflare Access rule in front, and cap `rerank_n` so a
-stray crawler can't burn CPU. Build images for the right arch — note this dev box is **aarch64**,
-so use `docker buildx --platform` if the target VM is x86.
+```
+make docker-setup DATASET=cqadupstack-unix   # fetch + index into the volume
+make docker-up                               # searchd :8080 (UI + API); nlp stays internal
+```
 
-**Resource notes (measured constraints of this box):** 5 cores, 11 GB RAM, 36 GB free — fine for
-SciFact/NFCorpus; TREC-COVID's HNSW build will be the slow part.
+**Online:** the same compose on one small VM; ~2 vCPU / 4 GB runs SciFact with CPU models, and
+the indexer needs ~6 GB at its peak (index elsewhere and ship the volume on a small box). Basic
+auth with TLS in front, and the request knobs are clamped server-side so a stray crawler cannot
+burn CPU. Build images for the target's architecture (`docker buildx --platform`).
 
 ---
 
 ## 9. Decisions & risks
 
 **Decided 2026-10-07:**
-- **Corpus:** SciFact + NFCorpus only; Robust04 dropped (§2).
-- **Verification:** build and verify natively on this box (JDK 21 + Maven into `~/.local`, uv venv
-  for Python). Dockerfiles and compose are written but **not verified here** — validating
-  `docker compose up` is a task for your own machine.
+- **Corpus:** SciFact + NFCorpus only; Robust04 dropped (§2). Later revised: CQADupStack unix
+  became the default and Quora was added.
+- **Verification:** build and verify natively first (JDK 21 + Maven, uv venv for Python), Docker
+  after. Both images have since been built and run.
 - **Scope:** build through **P4** (full retrieval pipeline, measured, plain UI), then review before
   investing in the insight panels (P5–P7).
 
-**Open decision (P5):** cross-encoder reranking measurably *hurts* on SciFact and no model or
-pool depth fixes it (`docs/reranker-findings.md`). Either keep it and teach the negative result —
-recommended, it is a better lesson than a stage that silently works — or add TREC-COVID, where
-reranking is known to pay for itself, at the cost of ~40 min one-time embedding for 171k docs.
+**Decided (P5):** cross-encoder reranking measurably *hurts* on SciFact and Quora, and no model
+or pool depth fixes it (`docs/reranker-findings.md`). Kept, and taught as the negative result it
+is; TREC-COVID was not added.
 
 **Risks:**
-1. **Docker build unverified** on this box (no Docker, no passwordless sudo). P7 needs your machine.
-2. **Cross-encoder latency on CPU** ≈ 0.7–1.5 s for 50 docs × 512 tokens. Acceptable, and honestly
-   a feature for the talk — but it means no snappy type-as-you-search on the rerank stage. Mitigate
-   with a progressive response: stream stages 1–3 immediately, patch in stage 4 when it lands.
-3. **Torch on aarch64** — CPU wheels exist and work; just slower than x86 AVX. Pin versions.
+1. ~~Docker build unverified.~~ Resolved: both images build and run, also on Kubernetes.
+2. **Cross-encoder latency on CPU** — measured ≈ 3–3.6 s for 50 docs on SciFact and CQADupStack,
+   0.14 s on one-line Quora questions. Acceptable, and honestly a feature for the talk, but no
+   type-as-you-search on the rerank stage. Streaming stages 1–3 first was not built; instead only
+   the last two chapters run the reranker at all.
+3. **Torch on aarch64** — CPU wheels exist and work; just slower than x86 AVX. Versions and model
+   revisions are pinned.
 4. **Curated demo queries can rot** when parameters change. `scripts/find_demo_queries.py`
    regenerates them against the live index; re-run it after touching the analyzer, the embedding
    model or the RRF constant.

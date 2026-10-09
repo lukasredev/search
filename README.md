@@ -99,21 +99,23 @@ length vs. average, and each term's contribution. This comes from Lucene's own
 knobs re-run the query live.
 
 **Dense retrieval.** The stage reports the embedding time separately from the graph-walk time,
-plus `visitedCount` — how many of the 5,183 vectors the HNSW search actually touched (typically
-about 20%). Turn `efSearch` down and watch visited count and recall fall together.
+plus `visitedCount` — how many of the 47,382 vectors the HNSW search actually touched (typically
+about 3%). Turn `efSearch` down and watch visited count and recall fall together.
 
 **Fusion.** The RRF panel prints the arithmetic for every document:
 `1/(60+1) + 1/(60+7) = 0.016393 + 0.014925 = 0.031318`. The header line reports how many
 candidates both retrievers found — usually under a third, which is exactly why fusion works.
 
 **Reranking.** Rank deltas are drawn per document, and the latency bar makes the argument for
-you: the cross-encoder costs ~60 ms per document, so scoring all 5,183 would take five minutes.
+you: the cross-encoder costs ~70 ms per document on CPU, so scoring all 47,382 would take about
+an hour.
 That is why there is a candidate-retrieval phase at all. Documents past the model's 512-token
 window are flagged `truncated` — a real gotcha, judged on their opening paragraph alone.
 
-**Measuring whether a stage earns its place.** Pick any of the 300 benchmark queries and the eval table fills in with nDCG@10,
-recall and MRR *after each stage*, with judged-relevant documents gold-bordered in the rankings
-so you can watch relevance migrate to the top.
+**Measuring whether a stage earns its place.** Pick any of the 1,072 judged queries and the eval
+table fills in with nDCG@10, recall and MRR *after each stage*, with judged-relevant documents
+ticked in the rankings so you can watch relevance migrate to the top. The last chapter puts the
+same table over the whole query set beside it, from `make bench`.
 
 ## API
 
@@ -131,12 +133,15 @@ next to the full trace to make the cost of instrumentation concrete.
 | endpoint | what it gives you |
 |---|---|
 | `GET /api/analyze?text=` | the analyzer chain, step by step |
-| `GET /api/term?t=` | df, idf, total term frequency, and the posting list |
-| `GET /api/doc/{id}` | stored document plus its highest-frequency terms |
+| `POST /api/index-preview` | `{"text": ...}` → what indexing that text would store: tokens, postings, vector. Writes nothing |
+| `GET /api/term?t=&limit=` | df, idf, total term frequency, and up to 1,000 postings |
+| `GET /api/doc/{id}` | stored document, its highest-frequency terms and its stored vector |
 | `GET /api/stats` | index statistics and the on-disk byte breakdown |
 | `GET /api/benchmark` | cached full-query-set results |
+| `GET /api/demo-queries` | the curated example queries |
 | `GET /api/queries` | the judged benchmark queries |
 | `GET /api/health` | index and sidecar status |
+| `GET /livez`, `/readyz` | Kubernetes probes; exempt from basic auth |
 
 `mode=bm25_only` / `mode=dense_only` isolate a single retriever — useful for showing that
 fusion beats both parents.
@@ -145,7 +150,9 @@ fusion beats both parents.
 
 ```
 searchd/     Java 21 + Lucene 10.4 + Javalin. Index, pipeline, API, static UI host.
+  Main.java           HTTP API, basic auth, static UI host
   Indexer.java        builds the index (slide-readable on purpose)
+  IndexStory.java     dry-run indexing of arbitrary text, for the first chapter
   SearchPipeline.java the five stages, one method each
   Bm25Stage.java      BM25 + explain() decomposition
   DenseStage.java     HNSW search, instrumented for visited count
@@ -153,9 +160,11 @@ searchd/     Java 21 + Lucene 10.4 + Javalin. Index, pipeline, API, static UI ho
   RerankStage.java    cross-encoder call + rank deltas
   Evaluator.java      nDCG, recall, MRR
   Benchmark.java      full query set -> benchmark.json
-nlp/         FastAPI sidecar: all-MiniLM-L6-v2 + ms-marco-MiniLM-L-6-v2, CPU
-ui/          single static page, no build step
-scripts/     dataset fetch + normalization (stdlib only)
+  Probes.java         /livez and /readyz
+nlp/         FastAPI sidecar: all-MiniLM-L6-v2 + ms-marco-MiniLM-L-6-v2, CPU, pinned revisions
+ui/          single static page, no build step; six chapters, one per pipeline stage
+scripts/     dataset fetch + normalization (stdlib only), demo-query finder
+docs/        deployment guide, reranker findings
 data/        datasets and index (gitignored, except each index's example queries and benchmark)
 ```
 
@@ -174,6 +183,8 @@ cleaner lexical-vs-semantic contrasts than Robust04's verbose topics.
 
 ## Status
 
-Phases P0–P4 of `PLAN.md` are complete: indexing, BM25, dense retrieval, RRF, reranking, and
-per-stage evaluation, with a plain UI. Still to do — the insight visualizations (rank-movement
-connectors, PCA scatter, posting inspector), the curated demo-query set, and Docker packaging.
+Complete and used for the talk: the full pipeline, per-stage evaluation and benchmarks on four
+corpora, a six-chapter UI with curated example queries, and Docker images that also run on
+Kubernetes (see [docs/deploy.md](docs/deploy.md)). Ideas from `PLAN.md` that were not built: the
+rank-movement connectors between columns, a PCA scatter of the embedding space, and a posting
+inspector in the UI (the data is there: `GET /api/term`).
