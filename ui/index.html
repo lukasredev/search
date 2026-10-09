@@ -408,7 +408,8 @@ function go(i) {
   drawRail();
   const c = CHAPTERS[state.ch];
   $('chTitle').textContent = c.title;
-  $('chThesis').innerHTML = c.pipe();
+  // Search chapters draw their diagram under the results instead (pipelineHtml).
+  $('chThesis').innerHTML = state.ch === 0 ? c.pipe() : '';
   $('msg').innerHTML = '';
   render();
   if (state.ch > 0 && state.q) search();
@@ -597,18 +598,27 @@ function renderSearch() {
       <button class="btn" id="go">Search</button>
     </div>
     <div id="examples"></div>
-    ${knobsHtml(c)}
     <div id="results"></div>`;
 
   $('go').onclick = search;
   $('q').onkeydown = e => { if (e.key === 'Enter') { state.q = $('q').value; search(); } };
   $('q').oninput = e => state.q = e.target.value;
+  drawExamples();
+  if (state.last) drawResults();
+  else { $('results').innerHTML = pipelineHtml(c); bindKnobs(c); }
+}
+
+/* The chapter's diagram and its knobs. Before a search they sit under the query; after
+   one they move below the results, so the ranking is the first thing on screen. */
+function pipelineHtml(c) {
+  return `<div class="panel"><h2>Where this happens in the pipeline</h2>${c.pipe()}</div>
+    ${knobsHtml(c)}`;
+}
+function bindKnobs(c) {
   c.knobs.forEach(k => {
     const el = $('k_' + k);
     if (el) el.onchange = () => { state.knob[k] = el.value; if (state.last) search(); };
   });
-  drawExamples();
-  if (state.last) drawResults();
 }
 
 const KNOB_META = {
@@ -683,19 +693,21 @@ function drawResults() {
   const st = Object.fromEntries(d.stages.map(s => [s.name, s]));
   const cols = c.cols.filter(n => st[n]?.results?.length);
 
-  const blocks = [analysisPanel(st.analyze, c)];
-  if (c.cols.includes('bm25')) blocks.push(bm25Panel());
-  if (state.ch >= 4) blocks.push(encoderPanel());
-  if (state.ch >= 4) blocks.push(latencyPanel(d.stages));
-  if (state.ch === 5) blocks.push(evalPanel(d.eval));
-  blocks.push(boardPanel(cols, st, d, c));
+  // Results first, straight under the query; the panels explaining them follow.
+  const blocks = [boardPanel(cols, st, d, c)];
   if (state.ch === 3 && st.rrf) blocks.push(rrfPanel(st.rrf, d));
   if (state.ch === 2 && st.dense) blocks.push(densePanel(st.dense, st.bm25));
-  if (state.ch < 4) blocks.push(latencyPanel(d.stages));
+  blocks.push(pipelineHtml(c));
+  blocks.push(analysisPanel(st.analyze, c));
+  if (c.cols.includes('bm25')) blocks.push(bm25Panel());
+  if (state.ch >= 4) blocks.push(encoderPanel());
+  if (state.ch === 5) blocks.push(evalPanel(d.eval));
+  blocks.push(latencyPanel(d.stages));
   if (state.ch === 5) blocks.push(benchPanel());
   blocks.push(rawPanel(d));
 
   $('results').innerHTML = blocks.filter(Boolean).join('');
+  bindKnobs(c);
   document.querySelectorAll('.doc').forEach(el =>
     el.onclick = () => showDoc(el.dataset.id, d, st));
 }
