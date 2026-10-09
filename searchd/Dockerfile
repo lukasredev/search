@@ -1,5 +1,7 @@
 # ── build ────────────────────────────────────────────────────────────────────
-FROM maven:3.9-eclipse-temurin-21 AS build
+# The jar is platform-independent, so compile natively even when building for another
+# architecture: Maven under QEMU emulation is many times slower.
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /src
 
 # Dependencies first, so editing a source file does not re-download the world.

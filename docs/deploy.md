@@ -98,6 +98,11 @@ The `nlp` image picks its torch wheel from `TARGETARCH`: on `amd64` it takes the
 build from PyTorch's own index, because the PyPI wheel drags in ~2.5 GB of CUDA packages
 that will never be used. On `arm64` the PyPI wheel is already CPU-only.
 
+Prebuilt multi-arch (`amd64` + `arm64`) images are published by
+[`.github/workflows/images.yml`](../.github/workflows/images.yml) to
+`ghcr.io/<owner>/<repo>/searchd` and `ghcr.io/<owner>/<repo>/nlp`: `:latest` tracks the
+default branch, `:sha-<short>` pins a commit, and a `v1.2.3` tag publishes `:1.2.3`.
+
 ## Checking it works
 
 ```bash
