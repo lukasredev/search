@@ -13,8 +13,12 @@ RUN mvn -B -q package -DskipTests
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre
+# The commit this image was built from; /api/health reports it and the UI footer shows it.
+# Declared after the build stage so a new commit does not invalidate the Maven layers.
+ARG GIT_SHA=""
 LABEL org.opencontainers.image.title="search-demo searchd" \
-      org.opencontainers.image.description="Lucene index, retrieval pipeline and UI"
+      org.opencontainers.image.description="Lucene index, retrieval pipeline and UI" \
+      org.opencontainers.image.revision="${GIT_SHA}"
 
 # curl is only here so the container can report its own health to compose.
 RUN apt-get update \
@@ -34,6 +38,7 @@ RUN chmod +x /usr/local/bin/entrypoint
 ENV DATA_ROOT=/data \
     INDEX_ROOT=/data/index \
     UI_DIR=/app/ui \
+    GIT_SHA=${GIT_SHA} \
     DATASET=cqadupstack-unix \
     NLP_URL=http://nlp:8081 \
     PORT=8080 \

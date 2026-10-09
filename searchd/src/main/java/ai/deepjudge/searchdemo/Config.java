@@ -34,6 +34,12 @@ public final class Config {
     return Duration.ofSeconds(Long.parseLong(env("SHUTDOWN_GRACE_SECONDS", "20")));
   }
 
+  /** The git commit the image was built from (set by the Docker build), or null. */
+  public static String commit() {
+    String v = System.getenv("GIT_SHA");
+    return v == null || v.isBlank() ? null : v;
+  }
+
   /** Directory holding ui/index.html and its fonts, or null to serve only the API. */
   public static String uiDir() { return System.getenv("UI_DIR"); }
 

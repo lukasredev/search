@@ -35,6 +35,9 @@ services:
     build:
       context: .
       dockerfile: searchd/Dockerfile
+      # `make docker-build` sets this to the current commit.
+      args:
+        GIT_SHA: ${GIT_SHA:-}
     image: search-demo/searchd:latest
     depends_on:
       nlp:

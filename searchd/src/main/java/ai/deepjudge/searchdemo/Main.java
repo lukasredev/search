@@ -129,6 +129,8 @@ public final class Main {
       out.put("ok", true);
       out.put("dataset", datasetName);
       out.put("docs", reader.numDocs());
+      String commit = Config.commit();
+      if (commit != null) out.put("commit", commit);
       try {
         out.put("nlp", nlp.health());
       } catch (Exception e) {

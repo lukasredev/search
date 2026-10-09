@@ -93,7 +93,7 @@ test-live:
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker-build:
-	docker compose build
+	GIT_SHA=$$(git rev-parse HEAD) docker compose build
 
 docker-setup:
 	docker compose --profile setup run --rm fetch $(DATASET)

@@ -187,6 +187,10 @@ td.best { color:var(--accent); font-weight:600; }
 
 .note { color:var(--mute); font-size:13.5px; margin-top:11px; max-width:80ch; }
 
+.foot { color:var(--mute); font-size:13px; margin:40px 0 8px; text-align:center; }
+.foot a { color:inherit; }
+.foot .mono { font-size:12px; }
+
 /* ── the shared visual vocabulary ──────────────────────────────────────── */
 .sprite { position:absolute; width:0; height:0; overflow:hidden; }
 .pipe { width:100%; max-width:860px; margin:0 0 22px; display:block; }
@@ -353,6 +357,9 @@ textarea { width:100%; min-height:168px; padding:13px; background:var(--ink);
   <div id="chThesis"></div>
   <div id="msg"></div>
   <div id="stage"></div>
+  <footer class="foot">built with ❤️ in 🇨🇭 by
+    <a href="https://github.com/lukasredev" target="_blank" rel="noopener">lukasredev</a><span
+    id="commit"></span></footer>
 </main>
 
 <div class="keys">← → chapters &nbsp; 0-5 jump &nbsp; / search</div>
@@ -414,6 +421,13 @@ function drawRail() {
   }).join('') + `<div class="railend" id="railend"></div>`;
   document.querySelectorAll('.ch').forEach(b => b.onclick = () => go(+b.dataset.i));
   drawRailEnd();
+}
+/* The commit the running image was built from, linked to it on GitHub. */
+function drawCommit() {
+  const sha = state.health?.commit;
+  $('commit').innerHTML = sha ? ` &middot; <a class="mono" target="_blank" rel="noopener"
+    href="https://github.com/lukasredev/search/commit/${encodeURIComponent(sha)}">${
+    esc(sha.slice(0, 7))}</a>` : '';
 }
 function drawRailEnd() {
   const h = state.health;
@@ -1326,6 +1340,7 @@ function render() { state.ch === 0 ? renderIndexing() : renderSearch(); }
 async function boot() {
   try {
     state.health = await (await fetch(`${API}/api/health`)).json();
+    drawCommit();
     if (!state.health.nlp?.ok) note('The embedding and reranking models are offline, so only '
       + 'the word-matching half of the pipeline will run.');
   } catch (e) { note('Cannot reach the search service. Is it running on :8080?', true); }
