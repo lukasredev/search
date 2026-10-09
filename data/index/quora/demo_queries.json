@@ -1,0 +1,284 @@
+{
+  "dataset": "quora",
+  "lexical-win": [
+    {
+      "qid": "ladder1",
+      "text": "Which is the best Linux for desktops and for mobiles?",
+      "relevantDocs": 2,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.605,
+        "rrf": 1.0,
+        "rerank": 1.0
+      },
+      "ladder": 1,
+      "teaches": "Rare, exact terms. BM25 is perfect and the embedding model is worse \u2014 it drifts to merely similar questions. Lexical search has been solved for fifty years, and here it beats a neural network."
+    },
+    {
+      "qid": "162830",
+      "text": "What are some ways in which hackers get access to the SS7 network?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.0,
+        "rrf": 0.301
+      },
+      "overlap": 10,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "507434",
+      "text": "How do I use the Greenify app?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.0,
+        "rrf": 0.0
+      },
+      "overlap": 13,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "292935",
+      "text": "Is there a job such that computer / algorithm / robot can never outperform human?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.301,
+        "rrf": 0.6309
+      },
+      "overlap": 22,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "115609",
+      "text": "What are the best high-quality Android games?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.3155,
+        "rrf": 0.6309
+      },
+      "overlap": 56,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "52820",
+      "text": "What's the best website to learn extensive programming from?",
+      "relevantDocs": 3,
+      "ndcg": {
+        "bm25": 0.9469,
+        "dense": 0.2961,
+        "rrf": 0.8385
+      },
+      "overlap": 32,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    }
+  ],
+  "semantic-win": [
+    {
+      "qid": "ladder2",
+      "text": "What is a good introductory computer science book?",
+      "relevantDocs": 3,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 0.712,
+        "rrf": 0.968,
+        "rerank": 1.0
+      },
+      "ladder": 2,
+      "teaches": "BM25 scores zero with every word right: the duplicate says \u201cbest introduction to computer science books\u201d and shares almost nothing to match on. This is the query that buys you the vector index."
+    },
+    {
+      "qid": "27569",
+      "text": "Computer Science: What is a programming language?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.4307
+      },
+      "overlap": 15,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "62940",
+      "text": "How much does it cost to build an Android app?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.3562
+      },
+      "overlap": 44,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "73356",
+      "text": "Why is Ruby on Rails called Ruby on Rails?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.301
+      },
+      "overlap": 67,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "121166",
+      "text": "How can I get Windows 10 on a Windows 7 computer?",
+      "relevantDocs": 2,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.4556
+      },
+      "overlap": 44,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "177131",
+      "text": "Is it possible to do masters degree in petroleum engineering with my civil engineering bachelors degree?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.4307
+      },
+      "overlap": 32,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "211799",
+      "text": "What's the hardest programming interview you've ever had?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.6309
+      },
+      "overlap": 12,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    }
+  ],
+  "fusion-win": [
+    {
+      "qid": "ladder3",
+      "text": "What can I use Java for?",
+      "relevantDocs": 2,
+      "ndcg": {
+        "bm25": 0.387,
+        "dense": 0.613,
+        "rrf": 0.807,
+        "rerank": 0.85
+      },
+      "ladder": 3,
+      "teaches": "Both retrievers find something, neither gets it right, and fusion beats both without their scores ever being comparable."
+    },
+    {
+      "qid": "227130",
+      "text": "Where can I learn HTML?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.3869,
+        "dense": 0.6309,
+        "rrf": 1.0
+      },
+      "overlap": 25,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "245856",
+      "text": "How can I make iPhone 4s faster with IOS 9.2?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.5,
+        "dense": 0.6309,
+        "rrf": 1.0
+      },
+      "overlap": 26,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "446041",
+      "text": "Which institute is best for IES coaching in civil engineering made easy or IES master's?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.6309,
+        "dense": 0.6309,
+        "rrf": 1.0
+      },
+      "overlap": 40,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "127392",
+      "text": "What someone do after engineering?",
+      "relevantDocs": 3,
+      "ndcg": {
+        "bm25": 0.6183,
+        "dense": 0.7123,
+        "rrf": 0.9675
+      },
+      "overlap": 43,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    }
+  ],
+  "topic": "cs",
+  "rerank-win": [
+    {
+      "qid": "ladder4",
+      "text": "What is the best online resource to learn Python?",
+      "relevantDocs": 6,
+      "ndcg": {
+        "bm25": 0.571,
+        "dense": 0.493,
+        "rrf": 0.628,
+        "rerank": 0.718
+      },
+      "ladder": 4,
+      "teaches": "Dense is worse than BM25 here, fusion improves on both and still stalls. Only reading each query and document together gets the rest of the way."
+    },
+    {
+      "qid": "rr2",
+      "text": "Which server-side scripting language should we use in web development today?",
+      "relevantDocs": 6,
+      "ndcg": {
+        "bm25": 0.846,
+        "dense": 0.776,
+        "rrf": 0.759,
+        "rerank": 0.848
+      },
+      "teaches": "Fusion actually loses to BM25 here. The cross-encoder is what recovers it \u2014 the case the stage exists for."
+    },
+    {
+      "qid": "rr3",
+      "text": "How long did it take you to learn JavaScript?",
+      "relevantDocs": 7,
+      "ndcg": {
+        "bm25": 0.275,
+        "dense": 0.937,
+        "rrf": 0.492,
+        "rerank": 0.516
+      },
+      "teaches": "Seven judged duplicates, so the reranking moves several documents at once."
+    }
+  ],
+  "note": "Entries marked \"ladder\" are hand-picked so the four build on each other: each one fails at the stage before it. Regenerating with scripts/find_demo_queries.py keeps them."
+}

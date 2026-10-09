@@ -1,0 +1,278 @@
+{
+  "dataset": "cqadupstack-unix",
+  "lexical-win": [
+    {
+      "qid": "ladder1",
+      "text": "What did Ken Thompson mean when he said, \"I'd spell create with an 'e'.\"",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.0,
+        "rrf": 0.333,
+        "rerank": 1.0
+      },
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. The answer is titled \u201cWhy wasn't `creat` called `create`?\u201d and BM25 puts it first; the embedding model has never learned the creat syscall and drifts to \u201cWhat does the -e do in a bash shebang?\u201d",
+      "ladder": 1
+    },
+    {
+      "qid": "93686",
+      "text": "Can I prove that an SSD is broken?",
+      "relevantDocs": 3,
+      "ndcg": {
+        "bm25": 0.469,
+        "dense": 0.0,
+        "rrf": 0.156,
+        "rerank": 0.156
+      },
+      "overlap": 15,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "32584",
+      "text": "Insert a multiline string into another string",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.0,
+        "rrf": 1.0
+      },
+      "overlap": 15,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "31379",
+      "text": "install firefox in ubuntu-server edition",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.0,
+        "rrf": 0.4307
+      },
+      "overlap": 34,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    },
+    {
+      "qid": "2605",
+      "text": "Change main partition size to install another distribution",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 1.0,
+        "dense": 0.0,
+        "rrf": 0.6309
+      },
+      "overlap": 21,
+      "category": "lexical-win",
+      "teaches": "A rare, exact term. BM25 nails it; the embedding model blurs it into topically-similar neighbours."
+    }
+  ],
+  "semantic-win": [
+    {
+      "qid": "ladder2",
+      "text": "What's the difference between $@ and $*",
+      "relevantDocs": 5,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 0.821,
+        "rrf": 0.332,
+        "rerank": 0.583
+      },
+      "category": "semantic-win",
+      "teaches": "The analyzer throws away $@ and $*, leaving BM25 with \u201cwhat differ between\u201d \u2014 so it returns terminal vs console and curl vs wget. The embedding model still sees what the question is about and ranks three correct answers first.",
+      "ladder": 2
+    },
+    {
+      "qid": "46796",
+      "text": "How to pass a variable to an sh child process?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.3333
+      },
+      "overlap": 19,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "61947",
+      "text": "Move files replacing?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.5
+      },
+      "overlap": 16,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "151455",
+      "text": "Show signals received by processes",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.6309
+      },
+      "overlap": 13,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "84540",
+      "text": "twitter status updates from command line (via cURL)",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.0
+      },
+      "overlap": 27,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    },
+    {
+      "qid": "73527",
+      "text": "why . and .. are listed when ls -a command executed?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.0
+      },
+      "overlap": 27,
+      "category": "semantic-win",
+      "teaches": "Vocabulary mismatch: the relevant document says the same thing in different words, so there is little term overlap for BM25 to work with."
+    }
+  ],
+  "fusion-win": [
+    {
+      "qid": "ladder3",
+      "text": "How to delete a file to the trash in BASH (Linux)",
+      "relevantDocs": 2,
+      "ndcg": {
+        "bm25": 0.218,
+        "dense": 0.571,
+        "rrf": 0.79,
+        "rerank": 0.613
+      },
+      "category": "fusion-win",
+      "teaches": "BM25 finds the right words on the wrong topics (Thunderbird, Samba); dense finds the right topic but vaguely. Neither has \u201cMake `rm` move to trash\u201d in its top three, both rank it reasonably, and fusion rewards that agreement by putting it first.",
+      "ladder": 3
+    },
+    {
+      "qid": "77951",
+      "text": "Traceback (most recent call last) error appears on terminal",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.2891,
+        "dense": 0.0,
+        "rrf": 1.0
+      },
+      "overlap": 2,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "91343",
+      "text": "What option(s) would you use to sort a file named foo in place, that is replacing the original file with the sorted version?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.3562,
+        "dense": 0.3562,
+        "rrf": 1.0
+      },
+      "overlap": 20,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "41555",
+      "text": "can't change file permission",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.3562,
+        "dense": 0.4307,
+        "rrf": 1.0
+      },
+      "overlap": 27,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "86296",
+      "text": "Is it OK to store /var/tmp on a SSD?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.3869,
+        "dense": 0.5,
+        "rrf": 1.0
+      },
+      "overlap": 19,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    },
+    {
+      "qid": "29182",
+      "text": "Meaning of \"* */1 * * *\" cron entry?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.5,
+        "dense": 0.5,
+        "rrf": 1.0
+      },
+      "overlap": 24,
+      "category": "fusion-win",
+      "teaches": "Neither retriever is good alone. Each surfaces part of the answer and RRF rewards the documents both of them half-agreed on."
+    }
+  ],
+  "topic": null,
+  "note": "Entries marked \"ladder\" are hand-picked so the four build on each other: each one fails at the stage before it. Regenerating with scripts/find_demo_queries.py keeps them.",
+  "rerank-win": [
+    {
+      "qid": "ladder4",
+      "text": "file modified while doing scp/cp",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.333,
+        "dense": 0.0,
+        "rrf": 0.0,
+        "rerank": 1.0
+      },
+      "category": "rerank-win",
+      "teaches": "Every retriever, and fusion, scores zero: they match scp and cp. Only reading the query and each document together finds \u201cWhat happens if a file is modified while you're copying it?\u201d \u2014 almost no shared words, exactly the right answer.",
+      "ladder": 4
+    },
+    {
+      "qid": "132115",
+      "text": "How to find reason a notebook wakes up?",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 1.0,
+        "rrf": 0.0,
+        "rerank": 1.0
+      },
+      "category": "rerank-win",
+      "teaches": "Notebook vs laptop, wakes up vs woke from suspend. Fusion buries the answer at rank 29; the reranker reads it and puts it first."
+    },
+    {
+      "qid": "150158",
+      "text": "how to create a v.imrc",
+      "relevantDocs": 1,
+      "ndcg": {
+        "bm25": 0.0,
+        "dense": 0.316,
+        "rrf": 0.0,
+        "rerank": 1.0
+      },
+      "category": "rerank-win",
+      "teaches": "A typo the tokenizer cannot see past: fusion returns initrd.img. The cross-encoder still recognises a vimrc question."
+    }
+  ]
+}

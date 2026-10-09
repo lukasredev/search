@@ -1,0 +1,40 @@
+{
+  "dataset" : "scifact",
+  "queries" : 300,
+  "rerank" : true,
+  "totalSeconds" : 941.17,
+  "perStage" : {
+    "bm25" : {
+      "avgMs" : 0.49,
+      "mrr" : 0.6508,
+      "ndcg@10" : 0.6826,
+      "queries" : 300,
+      "recall@10" : 0.8173,
+      "recall@100" : 0.9282
+    },
+    "dense" : {
+      "avgMs" : 18.32,
+      "mrr" : 0.611,
+      "ndcg@10" : 0.6451,
+      "queries" : 300,
+      "recall@10" : 0.7833,
+      "recall@100" : 0.925
+    },
+    "rrf" : {
+      "avgMs" : 0.19,
+      "mrr" : 0.6887,
+      "ndcg@10" : 0.7197,
+      "queries" : 300,
+      "recall@10" : 0.8536,
+      "recall@100" : 0.941
+    },
+    "rerank" : {
+      "avgMs" : 3112.78,
+      "mrr" : 0.6667,
+      "ndcg@10" : 0.6932,
+      "queries" : 300,
+      "recall@10" : 0.8239,
+      "recall@100" : 0.941
+    }
+  }
+}

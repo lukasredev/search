@@ -1,0 +1,41 @@
+{
+  "dataset" : "cqadupstack-unix",
+  "queries" : 1072,
+  "rerank" : true,
+  "rerankN" : 50,
+  "totalSeconds" : 3922.27,
+  "perStage" : {
+    "bm25" : {
+      "avgMs" : 0.53,
+      "mrr" : 0.3,
+      "ndcg@10" : 0.2938,
+      "queries" : 1072,
+      "recall@10" : 0.368,
+      "recall@100" : 0.5734
+    },
+    "dense" : {
+      "avgMs" : 37.75,
+      "mrr" : 0.4045,
+      "ndcg@10" : 0.4116,
+      "queries" : 1072,
+      "recall@10" : 0.5477,
+      "recall@100" : 0.8093
+    },
+    "rrf" : {
+      "avgMs" : 0.17,
+      "mrr" : 0.3768,
+      "ndcg@10" : 0.3752,
+      "queries" : 1072,
+      "recall@10" : 0.4852,
+      "recall@100" : 0.715
+    },
+    "rerank" : {
+      "avgMs" : 3615.59,
+      "mrr" : 0.3789,
+      "ndcg@10" : 0.3744,
+      "queries" : 1072,
+      "recall@10" : 0.4691,
+      "recall@100" : 0.715
+    }
+  }
+}

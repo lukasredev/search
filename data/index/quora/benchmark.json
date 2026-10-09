@@ -1,0 +1,41 @@
+{
+  "dataset" : "quora",
+  "queries" : 1000,
+  "rerank" : true,
+  "rerankN" : 50,
+  "totalSeconds" : 153.75,
+  "perStage" : {
+    "bm25" : {
+      "avgMs" : 0.72,
+      "mrr" : 0.7942,
+      "ndcg@10" : 0.7777,
+      "queries" : 1000,
+      "recall@10" : 0.8618,
+      "recall@100" : 0.9577
+    },
+    "dense" : {
+      "avgMs" : 12.68,
+      "mrr" : 0.8453,
+      "ndcg@10" : 0.8393,
+      "queries" : 1000,
+      "recall@10" : 0.9143,
+      "recall@100" : 0.9934
+    },
+    "rrf" : {
+      "avgMs" : 0.12,
+      "mrr" : 0.8547,
+      "ndcg@10" : 0.8394,
+      "queries" : 1000,
+      "recall@10" : 0.9043,
+      "recall@100" : 0.9827
+    },
+    "rerank" : {
+      "avgMs" : 136.02,
+      "mrr" : 0.7887,
+      "ndcg@10" : 0.7964,
+      "queries" : 1000,
+      "recall@10" : 0.8946,
+      "recall@100" : 0.9827
+    }
+  }
+}

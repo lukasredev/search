@@ -1,4 +1,10 @@
-data/
+# Datasets and indexes are large and rebuilt by `make data index`. The two small files
+# next to each index are kept: the hand-picked example queries and the benchmark results.
+data/*
+!data/index/
+data/index/*/*
+!data/index/*/demo_queries.json
+!data/index/*/benchmark.json
 target/
 node_modules/
 dist/
