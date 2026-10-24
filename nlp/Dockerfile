@@ -13,13 +13,13 @@ WORKDIR /app
 
 # Install torch before anything that depends on it. The PyPI wheels drag in ~3 GB of
 # CUDA packages we will never use, on aarch64 too by torch 2.14, so take it from
-# PyTorch's CPU index, which has wheels for both architectures.
-ARG TORCH_VERSION=2.14.1
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-      "torch==${TORCH_VERSION}"
-
+# PyTorch's CPU index, which has wheels for both architectures. The version comes from
+# requirements.txt, so the next step finds it satisfied and a Dependabot bump of that
+# one pin cannot leave the two disagreeing.
 COPY nlp/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+      "torch==$(sed -n 's/^torch==//p' requirements.txt)" \
+ && pip install --no-cache-dir -r requirements.txt
 
 # Bake the weights into the image so a container starts instantly and needs no network.
 # If you override EMBED_MODEL or RERANK_MODEL at runtime, that model is downloaded on

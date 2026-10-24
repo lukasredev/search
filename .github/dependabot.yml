@@ -1,8 +1,18 @@
-# Security updates only, one grouped pull request per ecosystem across the whole repo.
-# open-pull-requests-limit: 0 turns off routine version updates; security updates still
-# open. Needs "Dependabot security updates" switched on in the repository settings.
-# Dependabot cannot group security updates across ecosystems, so this is as close to
-# a single pull request as it gets.
+# Keeps every dependency on its newest release. Each ecosystem gets, once a week:
+#
+#   - one pull request with all its minor and patch updates;
+#   - one pull request per major update, since those can break the build (Javalin 6 to
+#     7 moved route registration) and should not hold the rest back;
+#   - security updates as soon as they are published, grouped into one pull request.
+#     Those need "Dependabot security updates" switched on in the repository settings.
+#
+# CI runs `make test` on each pull request and builds both images, so a green check
+# means the update compiles, passes the tests and still packages. Pre-releases are
+# never proposed.
+#
+# Not covered: the Python and JDK versions in .github/workflows/images.yml and the
+# local JDK in the Makefile. torch is pinned only in nlp/requirements.txt; the nlp
+# Dockerfile and CI both read it from there.
 version: 2
 
 updates:
@@ -10,8 +20,12 @@ updates:
     directory: /searchd
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 10
     groups:
+      maven:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
       maven-security:
         applies-to: security-updates
         patterns: ["*"]
@@ -20,28 +34,54 @@ updates:
     directory: /nlp
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 10
     groups:
+      pip:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
       pip-security:
         applies-to: security-updates
         patterns: ["*"]
 
+  # Base images in both Dockerfiles. Only the version part of a tag moves: 3.14-slim
+  # can become 3.15-slim, but it stays slim.
   - package-ecosystem: docker
     directories: [/searchd, /nlp]
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 10
     groups:
+      docker:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
       docker-security:
         applies-to: security-updates
+        patterns: ["*"]
+
+  # The python image the fetch and demos jobs run in.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      compose:
+        applies-to: version-updates
+        update-types: [minor, patch]
         patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 10
     groups:
+      actions:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
       actions-security:
         applies-to: security-updates
         patterns: ["*"]
