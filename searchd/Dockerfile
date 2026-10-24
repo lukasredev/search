@@ -3,7 +3,7 @@
 # architecture: Maven under QEMU emulation is many times slower.
 # Base images come from AWS's mirror of the Docker Hub official images: CI runners share
 # IPs, so anonymous Docker Hub pulls hit its rate limit and fail the build.
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/maven:3.9-eclipse-temurin-21 AS build
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /src
 
 # Dependencies first, so editing a source file does not re-download the world.
