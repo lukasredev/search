@@ -1,9 +1,8 @@
 # ── build ────────────────────────────────────────────────────────────────────
 # The jar is platform-independent, so compile natively even when building for another
 # architecture: Maven under QEMU emulation is many times slower.
-# Base images come from AWS's mirror of the Docker Hub official images: CI runners share
-# IPs, so anonymous Docker Hub pulls hit its rate limit and fail the build.
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/maven:3.9-eclipse-temurin-21 AS build
+# CI pulls Docker Hub images through mirror.gcr.io, see .github/workflows/images.yml.
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /src
 
 # Dependencies first, so editing a source file does not re-download the world.
@@ -14,7 +13,7 @@ COPY searchd/src ./src
 RUN mvn -B -q package -DskipTests
 
 # ── runtime ──────────────────────────────────────────────────────────────────
-FROM public.ecr.aws/docker/library/eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre
 # The commit this image was built from; /api/health reports it and the UI footer shows it.
 # Declared after the build stage so a new commit does not invalidate the Maven layers.
 ARG GIT_SHA=""
