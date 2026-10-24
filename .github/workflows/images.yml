@@ -90,7 +90,47 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=pr
 
-      - uses: docker/build-push-action@v7
+      # The ECR mirror rate-limits anonymous pulls too, and answers 429 when runners
+      # sharing an IP resolve base images at the same moment (both platforms of both
+      # images do). That passes within a minute, so retry twice, waiting longer each
+      # time. A real build failure fails all three attempts, and the job with it.
+      - id: build
+        continue-on-error: true
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - if: steps.build.outcome == 'failure'
+        run: sleep 60
+
+      - id: retry
+        if: steps.build.outcome == 'failure'
+        continue-on-error: true
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - if: steps.retry.outcome == 'failure'
+        run: sleep 180
+
+      - if: steps.retry.outcome == 'failure'
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image }}/Dockerfile
