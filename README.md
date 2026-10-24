@@ -41,7 +41,7 @@ deck, not the broken one.
 
 ## Running it
 
-Prerequisites: JDK 21, Maven, Python 3.11 (via `uv`). No Docker needed for local dev.
+Prerequisites: JDK 21, Maven, Python 3.14 (via `uv`). No Docker needed for local dev.
 
 ```bash
 python3 scripts/fetch_dataset.py cqadupstack-unix   # ~50 MB, no auth; `make data` fetches all

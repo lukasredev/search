@@ -1,6 +1,6 @@
 # Base images come from AWS's mirror of the Docker Hub official images: CI runners share
 # IPs, so anonymous Docker Hub pulls hit its rate limit and fail the build.
-FROM public.ecr.aws/docker/library/python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.14-slim
 LABEL org.opencontainers.image.title="search-demo nlp" \
       org.opencontainers.image.description="CPU embedding and reranking sidecar"
 
@@ -11,17 +11,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install torch before anything that depends on it. On amd64 the PyPI wheel drags in
-# ~2.5 GB of CUDA packages we will never use, so take it from PyTorch's CPU index
-# instead; the aarch64 wheels on PyPI are already CPU-only.
-ARG TARGETARCH
-ARG TORCH_VERSION=2.5.1
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-      pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-        "torch==${TORCH_VERSION}" ; \
-    else \
-      pip install --no-cache-dir "torch==${TORCH_VERSION}" ; \
-    fi
+# Install torch before anything that depends on it. The PyPI wheels drag in ~3 GB of
+# CUDA packages we will never use, on aarch64 too by torch 2.14, so take it from
+# PyTorch's CPU index, which has wheels for both architectures.
+ARG TORCH_VERSION=2.14.1
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+      "torch==${TORCH_VERSION}"
 
 COPY nlp/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

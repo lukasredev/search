@@ -58,7 +58,7 @@ services:
   # ── setup jobs: run once, then exit ───────────────────────────────────────
   fetch:
     profiles: ["setup"]
-    image: public.ecr.aws/docker/library/python:3.11-slim
+    image: public.ecr.aws/docker/library/python:3.14-slim
     working_dir: /work
     volumes:
       - ./scripts:/work/scripts:ro
@@ -115,7 +115,7 @@ services:
 
   demos:
     profiles: ["setup"]
-    image: public.ecr.aws/docker/library/python:3.11-slim
+    image: public.ecr.aws/docker/library/python:3.14-slim
     working_dir: /work
     depends_on:
       searchd:

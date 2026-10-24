@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.PostingsEnum;
@@ -21,6 +22,7 @@ import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.BytesRef;
 
 import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 
 /** HTTP API, and the static host for the built UI. */
@@ -83,163 +85,172 @@ public final class Main {
    */
   static Javalin createApp(DirectoryReader reader, Dataset dataset, NlpClient nlp, Path indexDir,
                            String uiDir, String authUser, String authPass, Duration stuckAfter) {
+    return createApp(reader, dataset, nlp, indexDir, uiDir, authUser, authPass, stuckAfter,
+        routes -> {});
+  }
+
+  /** As above, plus {@code extraRoutes}: Javalin 7 takes routes only before it is created. */
+  static Javalin createApp(DirectoryReader reader, Dataset dataset, NlpClient nlp, Path indexDir,
+                           String uiDir, String authUser, String authPass, Duration stuckAfter,
+                           Consumer<RoutesConfig> extraRoutes) {
     String datasetName = dataset.name();
     var searcher = new IndexSearcher(reader);
     var analyzer = new DemoAnalyzer();
     var pipeline = new SearchPipeline(searcher, analyzer, dataset, nlp);
     var indexStory = new IndexStory(reader, analyzer, nlp);
 
-    Javalin app = Javalin.create(config -> {
-      config.showJavalinBanner = false;
+    return Javalin.create(config -> {
+      config.startup.showJavalinBanner = false;
       if (uiDir != null) {
         config.staticFiles.add(uiDir, io.javalin.http.staticfiles.Location.EXTERNAL);
         config.spaRoot.addFile("/", uiDir + "/index.html", io.javalin.http.staticfiles.Location.EXTERNAL);
       }
       // On SIGTERM, finish in-flight searches (a rerank takes seconds) before exiting.
       config.jetty.modifyServer(server -> server.setStopTimeout(Config.shutdownGrace().toMillis()));
+      RoutesConfig routes = config.routes;
+
+      new Probes(stuckAfter).register(routes, searcher, datasetName);
+      routes.before(ctx -> {
+        // The API returns JSON and the UI renders it with innerHTML, so a browser must never
+        // sniff a response into HTML. Framing stays allowed: the demo may live in a slide.
+        ctx.header("X-Content-Type-Options", "nosniff");
+        ctx.header("Referrer-Policy", "no-referrer");
+        // Only the UI dev server gets CORS headers. Allowing any origin would let every page
+        // open in the browser query a local, auth-less instance. Not Javalin's CORS plugin:
+        // it answers 400 to any Origin it does not know, and browsers send Origin on
+        // same-origin POSTs too, which broke POST /api/index-preview everywhere but :5173.
+        if (DEV_ORIGIN.equals(ctx.header("Origin"))) {
+          ctx.header("Access-Control-Allow-Origin", DEV_ORIGIN);
+          ctx.header("Vary", "Origin");
+        }
+      });
+      // The dev server's POSTs carry a JSON content type, so the browser preflights them.
+      routes.options("/api/*", ctx -> {
+        if (DEV_ORIGIN.equals(ctx.header("Origin"))) {
+          ctx.header("Access-Control-Allow-Methods", "GET, POST");
+          ctx.header("Access-Control-Allow-Headers", "content-type");
+        }
+        ctx.status(204);
+      });
+      requireAuthIfConfigured(routes, authUser, authPass);
+
+      routes.get("/api/health", ctx -> {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("dataset", datasetName);
+        out.put("docs", reader.numDocs());
+        String commit = Config.commit();
+        if (commit != null) out.put("commit", commit);
+        try {
+          out.put("nlp", nlp.health());
+        } catch (Exception e) {
+          out.put("nlp", Map.of("ok", false, "error", String.valueOf(e.getMessage())));
+        }
+        ctx.json(out);
+      });
+
+      routes.get("/api/search", ctx -> ctx.json(pipeline.search(parse(ctx))));
+
+      routes.get("/api/analyze", ctx -> {
+        String text = ctx.queryParamAsClass("text", String.class).getOrDefault("");
+        ctx.json(Trace.map(
+            "text", text,
+            "chain", analyzer.trace(text),
+            "tokens", analyzer.analyze(Fields.CONTENT, text)));
+      });
+
+      routes.get("/api/term", ctx -> ctx.json(termInfo(reader, analyzer,
+          ctx.queryParamAsClass("t", String.class).getOrDefault(""),
+          Math.max(0, Math.min(MAX_POSTINGS,
+              ctx.queryParamAsClass("limit", Integer.class).getOrDefault(20))))));
+
+      // The indexing story: run arbitrary text through the real analyzer and embedding
+      // model and show everything the index would store, without writing anything.
+      // A POST, because a whole document does not fit in a URL: Jetty rejects request
+      // lines over 8 KB, and 2% of the CQADupStack posts are longer than that.
+      routes.post("/api/index-preview", ctx -> {
+        // The validator turns an unparseable body into a 400, where bodyAsClass would 500.
+        PreviewRequest req = ctx.bodyValidator(PreviewRequest.class).get();
+        ctx.json(indexStory.preview(req.text() == null ? "" : req.text(),
+            req.vector() == null || req.vector()));
+      });
+
+      routes.get("/api/doc/{id}", ctx -> {
+        var hits = searcher.search(new org.apache.lucene.search.TermQuery(
+            new Term(Fields.ID, ctx.pathParam("id"))), 1);
+        if (hits.scoreDocs.length == 0) {
+          ctx.status(404).json(Map.of("error", "no such doc"));
+          return;
+        }
+        int luceneDoc = hits.scoreDocs[0].doc;
+        var d = reader.storedFields().document(luceneDoc);
+        ctx.json(Trace.map(
+            "id", d.get(Fields.ID),
+            "title", d.get(Fields.TITLE),
+            "text", d.get(Fields.TEXT),
+            "luceneDoc", luceneDoc,
+            "topTerms", topTermsForDoc(reader, luceneDoc, 25),
+            // The vector Lucene actually stored for this document, read back from the index.
+            "vector", indexStory.storedVector(luceneDoc)));
+      });
+
+      routes.get("/api/stats", ctx -> {
+        Path stats = indexDir.resolve("index_stats.json");
+        if (Files.exists(stats)) {
+          ctx.contentType("application/json").result(Files.readString(stats));
+        } else {
+          ctx.json(Map.of("docs", reader.numDocs(), "note", "index_stats.json missing"));
+        }
+      });
+
+      // Curated examples live beside the index, not in the UI bundle: they are produced
+      // from the index by scripts/find_demo_queries.py and change whenever it is rebuilt.
+      routes.get("/api/demo-queries", ctx -> {
+        Path demos = indexDir.resolve("demo_queries.json");
+        if (Files.exists(demos)) {
+          ctx.contentType("application/json").result(Files.readString(demos));
+        } else {
+          ctx.json(Map.of("dataset", datasetName, "note",
+              "none generated yet; run scripts/find_demo_queries.py"));
+        }
+      });
+
+      routes.get("/api/benchmark", ctx -> {
+        Path cached = indexDir.resolve("benchmark.json");
+        if (Files.exists(cached)) {
+          ctx.contentType("application/json").result(Files.readString(cached));
+        } else {
+          ctx.status(404).json(Map.of("error", "no cached benchmark; run the Benchmark main class"));
+        }
+      });
+
+      routes.get("/api/queries", ctx -> {
+        // Quora ships 10k judged queries; the dropdown only needs a sample of them.
+        int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(500);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : dataset.queries().entrySet()) {
+          if (out.size() >= limit) break;
+          out.add(Trace.map("qid", e.getKey(), "text", e.getValue(),
+              "relevantDocs", dataset.qrelsFor(e.getKey()).size()));
+        }
+        ctx.json(Trace.map("dataset", datasetName, "total", dataset.queries().size(),
+            "returned", out.size(), "queries", out));
+      });
+
+      routes.exception(NlpClient.NlpUnavailableException.class, (e, ctx) ->
+          ctx.status(503).json(Map.of("error", "nlp sidecar unavailable", "detail", e.getMessage())));
+      routes.exception(SearchPipeline.QueryTooLongException.class, (e, ctx) ->
+          ctx.status(400).json(Map.of("error", e.getMessage())));
+
+      extraRoutes.accept(routes);
     });
-
-    new Probes(stuckAfter).register(app, searcher, datasetName);
-    app.before(ctx -> {
-      // The API returns JSON and the UI renders it with innerHTML, so a browser must never
-      // sniff a response into HTML. Framing stays allowed: the demo may live in a slide.
-      ctx.header("X-Content-Type-Options", "nosniff");
-      ctx.header("Referrer-Policy", "no-referrer");
-      // Only the UI dev server gets CORS headers. Allowing any origin would let every page
-      // open in the browser query a local, auth-less instance. Not Javalin's CORS plugin:
-      // it answers 400 to any Origin it does not know, and browsers send Origin on
-      // same-origin POSTs too, which broke POST /api/index-preview everywhere but :5173.
-      if (DEV_ORIGIN.equals(ctx.header("Origin"))) {
-        ctx.header("Access-Control-Allow-Origin", DEV_ORIGIN);
-        ctx.header("Vary", "Origin");
-      }
-    });
-    // The dev server's POSTs carry a JSON content type, so the browser preflights them.
-    app.options("/api/*", ctx -> {
-      if (DEV_ORIGIN.equals(ctx.header("Origin"))) {
-        ctx.header("Access-Control-Allow-Methods", "GET, POST");
-        ctx.header("Access-Control-Allow-Headers", "content-type");
-      }
-      ctx.status(204);
-    });
-    requireAuthIfConfigured(app, authUser, authPass);
-
-    app.get("/api/health", ctx -> {
-      Map<String, Object> out = new LinkedHashMap<>();
-      out.put("ok", true);
-      out.put("dataset", datasetName);
-      out.put("docs", reader.numDocs());
-      String commit = Config.commit();
-      if (commit != null) out.put("commit", commit);
-      try {
-        out.put("nlp", nlp.health());
-      } catch (Exception e) {
-        out.put("nlp", Map.of("ok", false, "error", String.valueOf(e.getMessage())));
-      }
-      ctx.json(out);
-    });
-
-    app.get("/api/search", ctx -> ctx.json(pipeline.search(parse(ctx))));
-
-    app.get("/api/analyze", ctx -> {
-      String text = ctx.queryParamAsClass("text", String.class).getOrDefault("");
-      ctx.json(Trace.map(
-          "text", text,
-          "chain", analyzer.trace(text),
-          "tokens", analyzer.analyze(Fields.CONTENT, text)));
-    });
-
-    app.get("/api/term", ctx -> ctx.json(termInfo(reader, analyzer,
-        ctx.queryParamAsClass("t", String.class).getOrDefault(""),
-        Math.max(0, Math.min(MAX_POSTINGS,
-            ctx.queryParamAsClass("limit", Integer.class).getOrDefault(20))))));
-
-    // The indexing story: run arbitrary text through the real analyzer and embedding
-    // model and show everything the index would store, without writing anything.
-    // A POST, because a whole document does not fit in a URL: Jetty rejects request
-    // lines over 8 KB, and 2% of the CQADupStack posts are longer than that.
-    app.post("/api/index-preview", ctx -> {
-      // The validator turns an unparseable body into a 400, where bodyAsClass would 500.
-      PreviewRequest req = ctx.bodyValidator(PreviewRequest.class).get();
-      ctx.json(indexStory.preview(req.text() == null ? "" : req.text(),
-          req.vector() == null || req.vector()));
-    });
-
-    app.get("/api/doc/{id}", ctx -> {
-      var hits = searcher.search(new org.apache.lucene.search.TermQuery(
-          new Term(Fields.ID, ctx.pathParam("id"))), 1);
-      if (hits.scoreDocs.length == 0) {
-        ctx.status(404).json(Map.of("error", "no such doc"));
-        return;
-      }
-      int luceneDoc = hits.scoreDocs[0].doc;
-      var d = reader.storedFields().document(luceneDoc);
-      ctx.json(Trace.map(
-          "id", d.get(Fields.ID),
-          "title", d.get(Fields.TITLE),
-          "text", d.get(Fields.TEXT),
-          "luceneDoc", luceneDoc,
-          "topTerms", topTermsForDoc(reader, luceneDoc, 25),
-          // The vector Lucene actually stored for this document, read back from the index.
-          "vector", indexStory.storedVector(luceneDoc)));
-    });
-
-    app.get("/api/stats", ctx -> {
-      Path stats = indexDir.resolve("index_stats.json");
-      if (Files.exists(stats)) {
-        ctx.contentType("application/json").result(Files.readString(stats));
-      } else {
-        ctx.json(Map.of("docs", reader.numDocs(), "note", "index_stats.json missing"));
-      }
-    });
-
-    // Curated examples live beside the index, not in the UI bundle: they are produced
-    // from the index by scripts/find_demo_queries.py and change whenever it is rebuilt.
-    app.get("/api/demo-queries", ctx -> {
-      Path demos = indexDir.resolve("demo_queries.json");
-      if (Files.exists(demos)) {
-        ctx.contentType("application/json").result(Files.readString(demos));
-      } else {
-        ctx.json(Map.of("dataset", datasetName, "note",
-            "none generated yet; run scripts/find_demo_queries.py"));
-      }
-    });
-
-    app.get("/api/benchmark", ctx -> {
-      Path cached = indexDir.resolve("benchmark.json");
-      if (Files.exists(cached)) {
-        ctx.contentType("application/json").result(Files.readString(cached));
-      } else {
-        ctx.status(404).json(Map.of("error", "no cached benchmark; run the Benchmark main class"));
-      }
-    });
-
-    app.get("/api/queries", ctx -> {
-      // Quora ships 10k judged queries; the dropdown only needs a sample of them.
-      int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(500);
-      List<Map<String, Object>> out = new ArrayList<>();
-      for (Map.Entry<String, String> e : dataset.queries().entrySet()) {
-        if (out.size() >= limit) break;
-        out.add(Trace.map("qid", e.getKey(), "text", e.getValue(),
-            "relevantDocs", dataset.qrelsFor(e.getKey()).size()));
-      }
-      ctx.json(Trace.map("dataset", datasetName, "total", dataset.queries().size(),
-          "returned", out.size(), "queries", out));
-    });
-
-    app.exception(NlpClient.NlpUnavailableException.class, (e, ctx) ->
-        ctx.status(503).json(Map.of("error", "nlp sidecar unavailable", "detail", e.getMessage())));
-    app.exception(SearchPipeline.QueryTooLongException.class, (e, ctx) ->
-        ctx.status(400).json(Map.of("error", e.getMessage())));
-
-    return app;
   }
 
   /**
    * Turns on HTTP basic auth when AUTH_USER and AUTH_PASS are both set. Enough to keep a
    * public demo from being crawled and burning CPU on reranking; put TLS in front of it.
    */
-  private static void requireAuthIfConfigured(Javalin app, String user, String pass) {
+  private static void requireAuthIfConfigured(RoutesConfig routes, String user, String pass) {
     if (user == null || user.isBlank() || pass == null || pass.isBlank()) {
       System.out.println("auth: disabled (set AUTH_USER and AUTH_PASS to enable)");
       return;
@@ -248,7 +259,7 @@ public final class Main {
         .encodeToString((user + ":" + pass).getBytes(StandardCharsets.UTF_8)))
         .getBytes(StandardCharsets.UTF_8);
 
-    app.before(ctx -> {
+    routes.before(ctx -> {
       if (Probes.PATHS.contains(ctx.path())) return;
       String got = ctx.header("Authorization");
       // Constant-time compare so the header cannot be guessed byte by byte.

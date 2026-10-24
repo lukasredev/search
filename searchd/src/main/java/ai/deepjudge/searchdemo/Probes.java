@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 
 /**
  * Kubernetes probes. {@code /livez} answers "should this process be restarted?" and
@@ -37,19 +37,19 @@ final class Probes {
   }
 
   /** Register before any other handler, so every request is tracked. */
-  void register(Javalin app, IndexSearcher searcher, String dataset) {
-    app.before(ctx -> inFlight.put(ctx.req(), System.nanoTime()));
+  void register(RoutesConfig routes, IndexSearcher searcher, String dataset) {
+    routes.before(ctx -> inFlight.put(ctx.req(), System.nanoTime()));
     // After-handlers run even when the request threw, so only a stuck request stays.
-    app.after(ctx -> inFlight.remove(ctx.req()));
+    routes.after(ctx -> inFlight.remove(ctx.req()));
 
-    app.get("/livez", ctx -> {
+    routes.get("/livez", ctx -> {
       long now = System.nanoTime();
       long stuck = inFlight.values().stream().filter(t -> now - t > stuckNanos).count();
       ctx.status(stuck == 0 ? 200 : 503)
           .json(Map.of("ok", stuck == 0, "inFlight", inFlight.size(), "stuck", stuck));
     });
 
-    app.get("/readyz", ctx -> {
+    routes.get("/readyz", ctx -> {
       // A real query, not just an open reader: proves the searcher can answer.
       int docs = searcher.count(new MatchAllDocsQuery());
       ctx.status(docs > 0 ? 200 : 503)

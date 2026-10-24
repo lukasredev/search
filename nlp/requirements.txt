@@ -1,5 +1,13 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sentence-transformers==3.3.1
-torch==2.5.1
-pydantic==2.10.4
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+sentence-transformers==6.2.0
+torch==2.14.1
+pydantic==2.14.1
+# Dependencies of torch. Installing torch from its CPU index takes them from there, and
+# that index only mirrors old, vulnerable copies; pinning them here upgrades them from
+# PyPI. mpmath is missing on purpose: sympy holds it below 1.4.
+filelock==4.2.4
+fsspec==2026.9.0
+markupsafe==3.0.4
+networkx==3.7
+setuptools==84.2.1

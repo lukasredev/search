@@ -284,13 +284,12 @@ class ApiTest {
 
   @Test
   void livenessFailsWhileARequestIsStuck() throws Exception {
-    app = Main.createApp(idx.reader, idx.dataset, idx.nlp.client(), idx.indexDir, null, null, null,
-        Duration.ofMillis(200));
     CountDownLatch release = new CountDownLatch(1);
-    app.get("/test/hang", ctx -> {
-      release.await(10, TimeUnit.SECONDS);
-      ctx.result("done");
-    });
+    app = Main.createApp(idx.reader, idx.dataset, idx.nlp.client(), idx.indexDir, null, null, null,
+        Duration.ofMillis(200), routes -> routes.get("/test/hang", ctx -> {
+          release.await(10, TimeUnit.SECONDS);
+          ctx.result("done");
+        }));
     String base = start(app);
 
     CompletableFuture<HttpResponse<String>> hung = HTTP.sendAsync(
