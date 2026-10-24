@@ -72,6 +72,13 @@ def main():
     ap.add_argument("--limit", type=int, help="scan at most this many queries")
     args = ap.parse_args()
 
+    # The rankings come from the server and the judgments from disk, so a mismatch
+    # would score one dataset's results against another's qrels and pick nonsense.
+    served = fetch(f"{args.host}/api/health").get("dataset")
+    if served != args.dataset:
+        raise SystemExit(f"{args.host} is serving {served!r}, not {args.dataset!r}; "
+                         f"pass --dataset {served} or restart it with DATASET={args.dataset}")
+
     data = ROOT / "data" / args.dataset
     qrels = {}
     for line in open(data / "qrels.tsv"):

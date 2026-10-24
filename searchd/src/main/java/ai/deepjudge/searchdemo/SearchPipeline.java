@@ -93,7 +93,17 @@ public final class SearchPipeline {
     this.reranker = new RerankStage(nlp);
   }
 
+  /** Searches, scoring against the judged query whose text matches, if there is one. */
   public Map<String, Object> search(Request req) throws IOException {
+    return search(req, dataset.qidForText(req.query()));
+  }
+
+  /**
+   * Searches, scoring against the judgments for {@code qid} (null for none). The benchmark
+   * knows each query's id, and must not look it up by text: two queries can share a text,
+   * and the lookup would score the second against the first one's judgments.
+   */
+  public Map<String, Object> search(Request req, String qid) throws IOException {
     Trace trace = new Trace();
     DocStore docs = new DocStore(searcher.getIndexReader());
     List<String> warnings = new ArrayList<>();
@@ -164,7 +174,6 @@ public final class SearchPipeline {
     }
 
     // ---- response ---------------------------------------------------------------
-    String qid = dataset.qidForText(req.query());
     Map<String, Integer> qrels = qid == null ? Map.of() : dataset.qrelsFor(qid);
 
     Map<String, Object> response = new LinkedHashMap<>();

@@ -94,6 +94,8 @@ def test_demo_query_search_end_to_end(tmp_path, monkeypatch):
     seen = []
 
     def fake_fetch(url):
+        if url.endswith("/api/health"):
+            return {"dataset": "tiny"}
         seen.append(url)
         q = url.rsplit("q=", 1)[1]
         stages = [{"name": n, "results": [{"docId": d} for d in ids]} for n, ids in rankings[q].items()]
@@ -118,3 +120,12 @@ def test_demo_query_search_end_to_end(tmp_path, monkeypatch):
     assert out["rerank-win"] == [{"text": "r"}]
     assert out["note"] == "keep me"
     assert all("rerank=false" in u for u in seen)
+
+
+def test_demo_query_search_refuses_a_server_on_another_dataset(tmp_path, monkeypatch):
+    """Scoring one dataset's rankings against another's qrels would pick nonsense."""
+    monkeypatch.setattr(find_demo_queries, "ROOT", tmp_path)
+    monkeypatch.setattr(find_demo_queries, "fetch", lambda url: {"dataset": "quora"})
+    monkeypatch.setattr(sys, "argv", ["find_demo_queries.py", "--dataset", "scifact"])
+    with pytest.raises(SystemExit, match="serving 'quora'"):
+        find_demo_queries.main()

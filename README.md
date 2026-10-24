@@ -188,7 +188,8 @@ real HTTP app, with a fake sidecar that speaks the same JSON (hashed bag-of-word
 word-overlap rerank scores). That covers every stage, the API, basic auth, the probes and the
 embedding cache. The sidecar's own tests swap its two models for fakes and pin the response
 shapes `NlpClient` reads. `make test-live` is the end-to-end half: real models, real index, and
-the one assumption no fake can check, which is that the two services agree.
+the one assumption no fake can check, which is that the two services agree. CI runs
+`make test` on every push and pull request, and builds no image unless it passes.
 
 ## Data
 

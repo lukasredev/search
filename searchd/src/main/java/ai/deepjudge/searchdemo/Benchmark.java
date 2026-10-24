@@ -59,6 +59,9 @@ public final class Benchmark {
     Map<String, Map<String, Double>> sums = new LinkedHashMap<>();
     Map<String, Integer> counts = new LinkedHashMap<>();
     Map<String, Double> stageMs = new LinkedHashMap<>();
+    // Timings are averaged over the queries that ran the stage, which need not be the
+    // judged ones the metrics are averaged over.
+    Map<String, Integer> stageRuns = new LinkedHashMap<>();
 
     List<Map.Entry<String, String>> queries =
         new ArrayList<>(ds.queries().entrySet()).subList(0, Math.min(limit, ds.queries().size()));
@@ -73,7 +76,7 @@ public final class Benchmark {
           rerank,
           1.2f, 0.75f, 100, 100, 100, RrfFusion.DEFAULT_K, 50, rerankN);
 
-      Map<String, Object> res = pipeline.search(req);
+      Map<String, Object> res = pipeline.search(req, q.getKey());
       // The pipeline degrades instead of failing when the sidecar is down, which is right
       // for a live demo and wrong here: the dense, rrf and rerank rows would silently be
       // BM25 numbers under other names.
@@ -105,6 +108,7 @@ public final class Benchmark {
         for (Object s : stages) {
           Trace.Stage stage = (Trace.Stage) s;
           stageMs.merge(stage.name(), stage.ms(), Double::sum);
+          stageRuns.merge(stage.name(), 1, Integer::sum);
         }
       }
 
@@ -121,7 +125,8 @@ public final class Benchmark {
       Map<String, Object> avg = new TreeMap<>();
       acc.forEach((metric, sum) -> avg.put(metric, Evaluator.r4(sum / n)));
       avg.put("queries", n);
-      avg.put("avgMs", Trace.round(stageMs.getOrDefault(stage, 0.0) / n));
+      avg.put("avgMs", Trace.round(stageMs.getOrDefault(stage, 0.0)
+          / Math.max(1, stageRuns.getOrDefault(stage, 0))));
       perStage.put(stage, avg);
     });
 

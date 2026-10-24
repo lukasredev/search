@@ -97,7 +97,10 @@ public final class Dataset {
     }
   }
 
-  /** Reads the corpus fully into a list. Fine for the datasets we ship (<6k docs). */
+  /**
+   * Reads the corpus fully into a list. The indexer wants every doc at hand to pair it with
+   * its cached vector; Quora's 523k docs are a few hundred MB, hence INDEX_HEAP.
+   */
   public static List<Doc> readDocs(Path dir) throws IOException {
     List<Doc> docs = new ArrayList<>();
     forEachDoc(dir, docs::add);

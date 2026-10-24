@@ -1,10 +1,12 @@
-# Builds the two service images and pushes them to the GitHub container registry:
+# Runs the unit tests, then builds the two service images and pushes them to the GitHub
+# container registry:
 #
 #   ghcr.io/<owner>/<repo>/searchd
 #   ghcr.io/<owner>/<repo>/nlp
 #
 # Pushes to the default branch publish :latest and :sha-<short>; a v1.2.3 tag publishes
-# :1.2.3 and :1.2. Pull requests build both images but push nothing.
+# :1.2.3 and :1.2. Pull requests build both images but push nothing. Nothing is built
+# if the tests fail, so a broken commit never becomes :latest.
 
 name: images
 
@@ -20,7 +22,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # `make test`: Java against a fake sidecar and a throwaway index, Python against fake
+  # models. Needs neither the real models nor a built index.
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: nlp/requirements*.txt
+
+      # The tests import the sidecar, so they need its dependencies, though never its
+      # models. The CPU torch wheel spares the runner ~2.5 GB of CUDA, as in nlp/Dockerfile.
+      - name: Python environment
+        run: |
+          python -m venv nlp/.venv
+          nlp/.venv/bin/pip install -q --index-url https://download.pytorch.org/whl/cpu \
+            "torch==$(sed -n 's/^torch==//p' nlp/requirements.txt)"
+          nlp/.venv/bin/pip install -q -r nlp/requirements.txt -r nlp/requirements-dev.txt
+
+      - run: make test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

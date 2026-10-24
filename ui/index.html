@@ -886,6 +886,8 @@ function latencyPanel(stages) {
   const max = Math.max(...stages.map(s => s.ms), 1);
   const total = stages.reduce((a,s) => a + s.ms, 0);
   const slowest = stages.reduce((a,s) => s.ms > a.ms ? s : a);
+  // Per document actually reread: fewer than rerank_n when fusion found fewer.
+  const rerank = stages.find(s => s.name === 'rerank' && s.detail?.msPerDoc);
   return `<div class="panel">
     <h2>Where the time went</h2>
     <p class="sub">${total.toFixed(0)} ms in total, ${
@@ -895,10 +897,9 @@ function latencyPanel(stages) {
       <span class="track"><span class="fill" style="width:${Math.max(100*s.ms/max,0.4)}%;
         background:${s.ms === max ? 'var(--accent)' : 'var(--paper)'}"></span></span>
       <span class="num mono">${s.ms} ms</span></div>`).join('')}
-    ${state.ch >= 4 ? `<p class="note">Scoring all ${
+    ${state.ch >= 4 && rerank ? `<p class="note">Scoring all ${
       (state.health?.docs || 0).toLocaleString()} documents this way would take
-      ${fmtDuration((state.health?.docs||0) * (stages.find(s=>s.name==='rerank')?.ms||0) /
-        Math.max(1,(state.last?.params?.rerankN||50)))}.</p>` : ''}
+      ${fmtDuration((state.health?.docs||0) * rerank.detail.msPerDoc)}.</p>` : ''}
   </div>`;
 }
 
@@ -931,11 +932,14 @@ function docCard(r, d, stage) {
   }
   const tags = (stage === 'rrf' && r.foundBy?.length === 1)
       ? `<span class="tag">${esc(r.foundBy[0])} only</span>` : '';
-  const trunc = (stage === 'rerank' && r.truncated) ? '<span class="tag">cut at 512</span>' : '';
+  const trunc = (stage === 'rerank' && r.truncated)
+      ? `<span class="tag">cut at ${maxTokens(d)}</span>` : '';
   return `<div class="doc${meta.relevance>0?' rel':''}" data-id="${esc(r.docId)}">
     <div class="top"><span>${r.rank}${tags}${trunc}</span>${right}</div>
     <div class="ttl">${esc(meta.title || meta.snippet || '')}</div></div>`;
 }
+// The cross-encoder's window, as the sidecar reports it (RERANK_MAX_LEN).
+const maxTokens = d => d.stages.find(s => s.name === 'rerank')?.params.maxLength ?? 512;
 const fmtScore = (v, s) => s === 'rrf' ? v.toFixed(5) : s === 'dense' ? v.toFixed(3) : v.toFixed(2);
 
 function evalPanel(ev) {
@@ -1000,7 +1004,7 @@ function showDoc(docId, d, st) {
   const rk = st.rerank?.results.find(r => r.docId === docId);
   if (rk) out.push(`<p class="note" style="font-size:15px">Cross-encoder scored it
     <b class="mono">${rk.score}</b> and moved it from ${rk.prevRank} to ${rk.rank}${
-    rk.truncated ? `, having read only the first 512 tokens of ${rk.docTokens}` : ''}.</p>`);
+    rk.truncated ? `, having read only the first ${maxTokens(d)} tokens of ${rk.docTokens}` : ''}.</p>`);
 
   const where = ['bm25','dense','rrf','rerank'].filter(n => st[n]).map(n => {
     const r = st[n].results.find(x => x.docId === docId);

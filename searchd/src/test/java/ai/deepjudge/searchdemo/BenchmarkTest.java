@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -41,6 +42,28 @@ class BenchmarkTest {
     }
     var perStage = (Map<String, Map<String, Object>>) report.get("perStage");
     assertEquals(Evaluator.r4(sum / 2), perStage.get("rrf").get("ndcg@10"));
+  }
+
+  @Test
+  void scoresEachQueryAgainstItsOwnJudgmentsEvenWhenTextsRepeat() throws Exception {
+    // Quora has two judged queries with the same text. The second must be scored against
+    // its own qrels (d6, which BM25 cannot find for this query), not the first one's.
+    Path dir = java.nio.file.Files.createTempDirectory("dup").resolve(TestIndex.DATASET);
+    TestIndex.writeDataset(dir);
+    java.nio.file.Files.writeString(dir.resolve("queries.tsv"),
+        "q1\t" + TestIndex.Q_VITAMIN + "\n" + "q4\t" + TestIndex.Q_VITAMIN + "\n");
+    java.nio.file.Files.writeString(dir.resolve("qrels.tsv"), "q1\td1\t2\n" + "q4\td6\t1\n");
+    Dataset dup = Dataset.load(dir);
+    var pipeline = new SearchPipeline(idx.searcher, new DemoAnalyzer(), dup, idx.nlp.client());
+
+    var single = (Map<String, Map<String, Object>>) ((Map<String, Object>) pipeline
+        .search(SearchPipeline.Request.of(TestIndex.Q_VITAMIN), "q1").get("eval")).get("perStage");
+    double q1 = (Double) single.get("bm25").get("ndcg@10");
+    assertTrue(q1 > 0);
+
+    var report = Benchmark.run(pipeline, dup, Integer.MAX_VALUE, false, 50);
+    var perStage = (Map<String, Map<String, Object>>) report.get("perStage");
+    assertEquals(Evaluator.r4(q1 / 2), perStage.get("bm25").get("ndcg@10"));
   }
 
   @Test

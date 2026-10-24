@@ -1,7 +1,8 @@
 # Local (non-Docker) dev. Docker packaging is phase P7; see PLAN.md.
 SHELL      := /bin/bash
 JAVA_HOME  ?= $(HOME)/.local/opt/jdk21
-MVN        := $(HOME)/.local/opt/maven/bin/mvn
+# The local install if there is one, else whatever is on PATH (as in CI).
+MVN        ?= $(firstword $(wildcard $(HOME)/.local/opt/maven/bin/mvn) mvn)
 JAVA       := $(JAVA_HOME)/bin/java
 JAVA_FLAGS := --add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED
 # 522k Quora vectors are ~800 MB of float[] before they reach Lucene.
