@@ -2,7 +2,7 @@
 # The jar is platform-independent, so compile natively even when building for another
 # architecture: Maven under QEMU emulation is many times slower.
 # CI pulls Docker Hub images through mirror.gcr.io, see .github/workflows/images.yml.
-FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /src
 
 # Dependencies first, so editing a source file does not re-download the world.
