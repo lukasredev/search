@@ -13,7 +13,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <lucene.version>10.5.2</lucene.version>
-    <javalin.version>7.2.3</javalin.version>
+    <javalin.version>7.2.4</javalin.version>
     <jackson.version>2.22.4</jackson.version>
     <junit.version>6.1.3</junit.version>
     <!-- Newer than the versions Javalin pins; patch releases carry Jetty's security fixes. -->
@@ -87,7 +87,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.6.0</version>
+        <version>3.6.1</version>
         <configuration>
           <argLine>--add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED</argLine>
         </configuration>
